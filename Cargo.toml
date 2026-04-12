@@ -3,5 +3,6 @@ members = [
     "crypto",
     "jwt_core",
     "db_client",
+    "oauth_flow",
 ]
 resolver = "2"
