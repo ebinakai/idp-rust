@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crypto",
+    "jwt_core",
+]
+resolver = "2"
