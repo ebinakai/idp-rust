@@ -18,9 +18,9 @@
 
 ### 2. 外部依存・プロトコル処理モジュール（中期フェーズ）
 
-* **`db_client`** (In Progress)
+* **`db_client`** (Done)
   * データベースへの非同期接続と単純なCRUD操作を隠蔽・抽象化するモジュール。
-* **`oauth_flow`** (Planned)
+* **`oauth_flow`** (In Progress)
   * 認可コードの生成、トークンの妥当性検証など、OAuth2仕様に基づくビジネスロジックを管理するモジュール。
 * **`webauthn`** (Planned)
   * Passkeyのチャレンジ生成と公開鍵暗号による署名検証を行うモジュール。

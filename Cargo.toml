@@ -2,5 +2,6 @@
 members = [
     "crypto",
     "jwt_core",
+    "db_client",
 ]
 resolver = "2"
