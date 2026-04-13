@@ -21,7 +21,7 @@ pub struct TokenRequest {
 }
 
 impl AuthCode {
-    pub fn new(user_id: String, client_id: &str) -> Self {
+    pub fn new(user_id: &str, client_id: &str) -> Self {
         let mut bytes = [0u8; 32];
         rand::rng().fill(&mut bytes);
         let code_string = URL_SAFE_NO_PAD.encode(&bytes);
@@ -78,7 +78,7 @@ mod tests {
         let user_id = "test_user".to_string();
         let client_id = "client_123";
 
-        let auth_code = AuthCode::new(user_id.clone(), client_id);
+        let auth_code = AuthCode::new(&user_id, client_id);
         assert!(!auth_code.code.is_empty(), "認可コードが生成されていません");
         assert_eq!(auth_code.user_id, user_id, "ユーザーIDが一致しません");
         assert_eq!(auth_code.client_id, client_id, "クライアントIDが一致しません");
@@ -90,7 +90,7 @@ mod tests {
     fn test_verify_for_exchange() {
         let user_id = "test_user".to_string();
         let client_id = "client_123";
-        let auth_code = AuthCode::new(user_id, client_id);
+        let auth_code = AuthCode::new(&user_id, client_id);
 
         let valid_request = TokenRequest {
             grant_type: "authorization_code".to_string(),

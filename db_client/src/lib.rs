@@ -28,7 +28,7 @@ impl DbClient {
         Ok(Self { pool })
     }
 
-    pub async fn create_user(&self, user: User) -> Result<(), sqlx::Error> {
+    pub async fn create_user(&self, user: &User) -> Result<(), sqlx::Error> {
         sqlx::query!(
             "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
             user.id,
@@ -91,7 +91,7 @@ mod tests {
             updated_at: None,
         };
 
-        client.create_user(user).await.expect("ユーザーの作成に失敗しました");
+        client.create_user(&user).await.expect("ユーザーの作成に失敗しました");
 
         let fetched_user = client.get_user_by_name(&username).await.expect("Selectクエリの実行に失敗しました");
         assert!(fetched_user.is_some(), "ユーザーが見つかりませんでした");
