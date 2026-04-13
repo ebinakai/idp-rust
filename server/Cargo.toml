@@ -1,0 +1,15 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.8"
+crypto = { version = "0.1.0", path = "../crypto" }
+db_client = { version = "0.1.0", path = "../db_client" }
+dotenvy = "0.15.7"
+jwt_core = { version = "0.1.0", path = "../jwt_core" }
+oauth_flow = { version = "0.1.0", path = "../oauth_flow" }
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.51.1", features = ["full"] }
+uuid = { version = "1.23.0", features = ["v4"] }

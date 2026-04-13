@@ -4,5 +4,6 @@ members = [
     "jwt_core",
     "db_client",
     "oauth_flow",
+    "server", "client_app",
 ]
 resolver = "2"
