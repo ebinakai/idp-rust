@@ -1,10 +1,11 @@
 use axum::{
     extract::State,
-    http::StatusCode,
-    routing::post,
+    http::{StatusCode, HeaderMap},
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use serde_json;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
@@ -56,6 +57,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/login", post(login_handler))
+        .route("/api/userinfo", get(get_userinfo_handler))
         .fallback_service(ServeDir::new("static"))
         .with_state(state);
 
@@ -118,4 +120,32 @@ async fn login_handler(
     Ok(Json(ClientRes { 
         access_token: idp_token_data.access_token,
     }))
+}
+
+async fn get_userinfo_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .ok_or((StatusCode::UNAUTHORIZED, "トークンが見つかりません".to_string()))?;
+    
+    let res = state.reqwest_client
+        .get("http://localhost:3000/userinfo")
+        .header("Authorization", auth_header)
+        .send()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Idp通信エラー: {}", e)))?;
+    
+    if !res.status().is_success() {
+        return Err((res.status(), "ユーザーの情報の取得に失敗しいました".to_string()));
+    }
+    
+    let data:serde_json::Value = res
+        .json()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("JSONパースエラー: {}", e)))?;
+    
+    Ok(Json(data))
 }

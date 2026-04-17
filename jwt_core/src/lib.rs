@@ -6,6 +6,7 @@ use jsonwebtoken::{
     EncodingKey,
     Header,
     Validation,
+    Algorithm,
 };
 use serde::{Deserialize, Serialize};
 
@@ -35,16 +36,13 @@ pub fn create_token(user_id: &str, secret: &[u8]) -> Result<String, jsonwebtoken
     )
 }
 
-pub fn verify_token(token: &str, secret: &[u8]) -> Result<Claims, jsonwebtoken::errors::Error> {
-    let validation = Validation::default();
+pub fn verify_token(token: &str, secret: &[u8]) -> Result<String, jsonwebtoken::errors::Error> {
+    let key = DecodingKey::from_secret(secret);
+    let validation = Validation::new(Algorithm::HS256);
+    
+    let token_data = decode::<Claims>(token, &key, &validation);
 
-    let token_data = decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(secret),
-        &validation,
-    );
-
-    Ok(token_data?.claims)
+    Ok(token_data?.claims.sub)
 }
 
 #[cfg(test)]
@@ -61,7 +59,7 @@ mod tests {
         assert_eq!(token.split('.').count(), 3, "トークンは3つの部分から構成されている必要があります");
 
         let claims = verify_token(&token, SECRET).expect("トークンの検証に失敗しました");
-        assert_eq!(claims.sub, user_id, "クレームのsubはユーザーIDと一致する必要があります");
+        assert_eq!(claims, user_id, "クレームはユーザーIDと一致する必要があります");
     }
 
     #[test]

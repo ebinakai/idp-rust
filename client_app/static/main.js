@@ -28,6 +28,31 @@ document.addEventListener("DOMContentLoaded", () => {
         errorMsg.textContent = err.message;
       }
     });
+  
+  document.getElementById("get-userinfo-button").addEventListener("click", async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+    
+    try {
+      const response = await fetch("/api/userinfo", {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error("ユーザー情報の取得に失敗しました");
+      
+      const data = await response.json();
+      
+      const display = document.getElementById("userinfo-display");
+      display.style.display = "block";
+      display.textContent = JSON.stringify(data, null, 2);
+    } catch (err) {
+      alert(err.message);
+    }
+    
+  })
 
   document.getElementById("logout-button").addEventListener("click", () => {
     localStorage.removeItem("access_token");

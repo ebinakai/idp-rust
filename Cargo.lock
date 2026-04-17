@@ -255,6 +255,7 @@ dependencies = [
  "axum",
  "reqwest",
  "serde",
+ "serde_json",
  "tokio",
  "tower-http",
 ]
@@ -2151,6 +2152,7 @@ dependencies = [
  "jwt_core",
  "oauth_flow",
  "serde",
+ "serde_json",
  "tokio",
  "uuid",
 ]

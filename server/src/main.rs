@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{StatusCode, HeaderMap},
     routing::{get, post},
     Json, Router,
 };
@@ -8,6 +8,7 @@ use crypto;
 use db_client::{DbClient, User};
 use jwt_core;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use tokio::net::TcpListener;
 use uuid::Uuid;
 use oauth_flow::{
@@ -78,6 +79,7 @@ async fn main() {
         .route("/register", post(register_user))
         .route("/login", post(login_user))
         .route("/token", post(exchange_token))
+        .route("/userinfo", get(get_user_info))
         .with_state(state);
 
     let listener = TcpListener::bind("127.0.0.1:3000")
@@ -217,6 +219,44 @@ async fn exchange_token(
         access_token: jwt_string,
         token_type: "Bearer".to_string(),
     };
+
+    Ok(Json(response))
+}
+
+async fn get_user_info(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let auth_header = headers
+        .get("Authorization")
+        .and_then(|value| value.to_str().ok())
+        .ok_or((
+            StatusCode::UNAUTHORIZED,
+            "Authorizationヘッダーが存在ません".to_string(),
+        ))?;
+    
+    if !auth_header.starts_with("Bearer ") {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "Authorizationヘッダーの形式が正しくありません".to_string(),
+        ));
+    }
+    
+    let token = &auth_header[7..];
+    let user_id = match jwt_core::verify_token(token, state.jwt_secret.as_bytes()) {
+        Ok(id) => id,
+        Err(e) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                format!("無効または期限切れのトークンです: {}", e),
+            ));
+        }
+    };
+    
+    let response = serde_json::json!({
+        "message": "JWTの検証に成功しました。正答なアクセス権を確認しました。",
+        "user_id": user_id,
+    });
 
     Ok(Json(response))
 }
