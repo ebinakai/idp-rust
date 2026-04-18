@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 axum = "0.8.8"
+chrono = "0.4.44"
 crypto = { version = "0.1.0", path = "../crypto" }
 db_client = { version = "0.1.0", path = "../db_client" }
 dotenvy = "0.15.7"

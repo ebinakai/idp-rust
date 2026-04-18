@@ -10,7 +10,7 @@ use jsonwebtoken::{
     Validation, Algorithm,
 };
 use serde::{Deserialize, Serialize};
-use serde_json;
+use serde_json::{self, de};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -41,6 +41,7 @@ struct Claims {
 struct AppState {
     reqwest_client: reqwest::Client,
     jwks_cache: JwksCache,
+    client_id: String,
 }
 
 #[derive(Deserialize)]
@@ -71,12 +72,26 @@ struct IdpTokenReq {
 #[derive(Deserialize)]
 struct IdpTokenRes {
     access_token: String,
+    refresh_token: Option<String>,
     _token_type: Option<String>,
 }
 
 #[derive(Serialize)]
 struct ClientRes {
     access_token: String,
+    refresh_token: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct RefreshReq {
+    refresh_token: String,
+}
+
+#[derive(Serialize)]
+struct RefreshTokenReq {
+    grant_type: String,
+    refresh_token: String,
+    client_id: String,
 }
 
 #[tokio::main]
@@ -84,12 +99,14 @@ async fn main() {
     let state = AppState { 
         reqwest_client: reqwest::Client::new(),
         jwks_cache: Arc::new(RwLock::new(HashMap::new())),
+        client_id: "test_client_app".to_string(),
     };
 
     let app = Router::new()
         .route("/api/login", post(login_handler))
         .route("/api/userinfo", get(get_userinfo_handler))
         .route("/api/verify", get(verify_handler))
+        .route("/api/refresh", post(refresh_handler))
         .fallback_service(ServeDir::new("static"))
         .with_state(state);
 
@@ -107,12 +124,11 @@ async fn login_handler(
     State(state): State<AppState>,
     Json(payload): Json<LoginPayload>,
 ) -> Result<Json<ClientRes>, (StatusCode, String)> {
-    let client_id = "test_client_id".to_string();
     
     let login_req = IdpLoginReq {
         username: payload.username,
         password: payload.password,
-        client_id: client_id.clone(),
+        client_id: state.client_id.to_string()
     };
     
     let login_res =  state.reqwest_client
@@ -134,7 +150,7 @@ async fn login_handler(
     let token_req = IdpTokenReq {
         grant_type: "authorization_code".to_string(),
         code: idp_login_data.auth_code,
-        client_id: client_id,
+        client_id: state.client_id.to_string(),
     };
     
     let token_res = state.reqwest_client
@@ -151,6 +167,7 @@ async fn login_handler(
     
     Ok(Json(ClientRes { 
         access_token: idp_token_data.access_token,
+        refresh_token: idp_token_data.refresh_token,
     }))
 }
 
@@ -244,4 +261,31 @@ async fn verify_handler(
         "message": "ローカル検証に成功しました！",
         "claims": token_data.claims
     })))
+}
+
+async fn refresh_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<RefreshReq>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    
+    let token_req = RefreshTokenReq {
+        grant_type: "refresh_token".to_string(),
+        refresh_token: payload.refresh_token,
+        client_id: state.client_id.to_string(),
+    };
+
+    let res = state.reqwest_client
+        .post("http://localhost:3000/token")
+        .json(&token_req)
+        .send()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("IdPとの通信エラー: {}", e)))?;
+    
+    if res.status().is_success() {
+        let data: serde_json::Value = res.json().await.unwrap();
+        Ok(Json(data))
+    } else {
+        let error_msg = res.text().await.unwrap_or_default();
+        Err((StatusCode::INTERNAL_SERVER_ERROR, format!("トークンのリフレッシュに失敗しました: {}", error_msg)))
+    }
 }

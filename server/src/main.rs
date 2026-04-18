@@ -13,10 +13,10 @@ use tokio::net::TcpListener;
 use uuid::Uuid;
 use oauth_flow::{
     AuthCode,
-    TokenRequest as OAuthTokenRequest,
+    TokenRequest as OAuthTokenReq,
 };
 
-use std::collections::HashMap;
+use std::{collections::HashMap};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -29,36 +29,38 @@ struct AppState {
 }
 
 #[derive(Deserialize)]
-struct RegisterRequest {
+struct RegisterReq {
     username: String,
     password: String,
 }
 
 #[derive(Deserialize)]
-struct LoginRequest {
+struct LoginReq {
     username: String,
     password: String,
     client_id: String,
 }
 
 #[derive(Serialize)]
-struct LoginResponse {
+struct LoginRes {
     auth_code: String,
 }
 
 #[derive(Deserialize)]
-struct ExchangePayload {
+struct TokenReq {
     pub grant_type: String,
-    pub code: String,
+    pub code: Option<String>,
     pub client_id: String,
     pub scope: Option<String>,
+    pub refresh_token: Option<String>,
 }
 
 #[derive(Serialize)]
-struct TokenResponse {
+struct TokenRes {
     pub access_token: String,
     pub token_type: String,
     pub id_token: Option<String>,
+    pub refresh_token: Option<String>,
 }
 
 #[tokio::main]
@@ -106,7 +108,7 @@ async fn health_check() -> &'static str {
 
 async fn register_user(
     State(state): State<AppState>,
-    Json(payload): Json<RegisterRequest>,
+    Json(payload): Json<RegisterReq>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let password_hash = match crypto::hash_password(&payload.password) {
         Ok (hash) => hash,
@@ -119,7 +121,6 @@ async fn register_user(
     };
     
     let user_id = Uuid::new_v4().to_string();
-    
     let new_user = User {
         id: user_id,
         username: payload.username,
@@ -139,8 +140,8 @@ async fn register_user(
 
 async fn login_user(
     State(state): State<AppState>,
-    Json(payload): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, (StatusCode, String)> {
+    Json(payload): Json<LoginReq>,
+) -> Result<Json<LoginRes>, (StatusCode, String)> {
     let user = match state.db.get_user_by_name(&payload.username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
@@ -174,10 +175,9 @@ async fn login_user(
     };
 
     let auth_code = AuthCode::new(&user.id, &payload.client_id);
-
     state.auth_codes.lock().unwrap().insert(auth_code.code.clone(), auth_code.clone());
 
-    Ok(Json(LoginResponse {
+    Ok(Json(LoginRes {
         auth_code: auth_code.code,
     }))
 
@@ -185,72 +185,108 @@ async fn login_user(
 
 async fn exchange_token(
     State(state): State<AppState>,
-    Json(payload): Json<ExchangePayload>,
-) -> Result<Json<TokenResponse>, (StatusCode, String)> {
-    let auth_code = match state.auth_codes.lock().unwrap().remove(&payload.code) {
-        Some(code) => code,
-        None => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "無効な認可コード、または使用済みのコードです".to_string(),
-            ))
-        }
-    };
-
-    let oauth_req = OAuthTokenRequest {
-        grant_type: payload.grant_type,
-        code: auth_code.code.clone(),
-        client_id: payload.client_id.clone(),
-    };
-
-    let user_id = match auth_code.verify_for_exchange(&oauth_req) {
-        Ok(id) => id,
-        Err(e) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("認可コードの検証に失敗しました: {:?}", e),
-            ))
-        }
-    };
-
-    let jwt_string = match jwt_core::create_token(&user_id, state.private_key.as_bytes(), &state.kid) {
-        Ok(token) => token,
-        Err(e) => {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("JWTの生成に失敗しました: {:?}", e),
-            ))
-        }
-    };
+    Json(payload): Json<TokenReq>,
+) -> Result<Json<TokenRes>, (StatusCode, String)> {
+    if payload.grant_type == "authorization_code" {
+        let code = payload.code.ok_or((StatusCode::BAD_REQUEST, "codeが必要です".to_string()))?;
+        let auth_code = match state.auth_codes.lock().unwrap().remove(&code) {
+            Some(code) => code,
+            None => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "無効な認可コード、または使用済みのコードです".to_string(),
+                ))
+            }
+        };
     
-    let mut id_token = None;
-    if let Some(scope) = payload.scope {
-        if scope.contains("openid") {
-            let issuer = "http://localhost:3000";
-            
-            id_token = match jwt_core::create_id_token(
-                &user_id, 
-                &payload.client_id,
-                issuer,
-                state.private_key.as_bytes(),
-                &state.kid.as_str()
-            ) {
-                Ok(token) => Some(token),
-                Err(e) => {
-                    println!("IDトークンの生成に失敗: {:?}", e);
-                    None
-                },
+        let oauth_req = OAuthTokenReq {
+            grant_type: payload.grant_type,
+            code: auth_code.code.clone(),
+            client_id: payload.client_id.clone(),
+        };
+    
+        let user_id = match auth_code.verify_for_exchange(&oauth_req) {
+            Ok(id) => id,
+            Err(e) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!("認可コードの検証に失敗しました: {:?}", e),
+                ))
+            }
+        };
+    
+        let jwt_string = match jwt_core::create_token(&user_id, state.private_key.as_bytes(), &state.kid) {
+            Ok(token) => token,
+            Err(e) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("JWTの生成に失敗しました: {:?}", e),
+                ))
+            }
+        };
+        
+        let mut id_token = None;
+        if let Some(scope) = payload.scope {
+            if scope.contains("openid") {
+                let issuer = "http://localhost:3000";
+                
+                id_token = match jwt_core::create_id_token(
+                    &user_id, 
+                    &payload.client_id,
+                    issuer,
+                    state.private_key.as_bytes(),
+                    &state.kid.as_str()
+                ) {
+                    Ok(token) => Some(token),
+                    Err(e) => {
+                        println!("IDトークンの生成に失敗: {:?}", e);
+                        None
+                    },
+                }
             }
         }
+        
+        let refresh_token = oauth_flow::RefreshTokenData::generate(30);
+        let rt = db_client::RefreshToken {
+            id: refresh_token.token.clone(),
+            user_id: user_id.clone(),
+            client_id: payload.client_id.clone(),
+            expires_at: refresh_token.expires_at,
+        };
+        state.db.save_refresh_token(&rt).await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("DBエラー: {}", e)))?;
+        
+        return Ok(Json(TokenRes {
+            access_token: jwt_string,
+            token_type: "Bearer".to_string(),
+            id_token,
+            refresh_token: Some(refresh_token.token),
+        }));
+    } else if payload.grant_type == "refresh_token" {
+        let refresh_token = payload.refresh_token
+            .ok_or((StatusCode::BAD_REQUEST, "refresh_tokenが必要です".to_string()))?;
+        
+        let valid_token = state.db.get_valid_refresh_token(&refresh_token)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("DBエラー: {}", e)))?
+            .ok_or((StatusCode::UNAUTHORIZED, "無効または期限切れのリフレッシュトークンです".to_string()))?;
+        
+        if valid_token.client_id != payload.client_id {
+            return Err((StatusCode::UNAUTHORIZED, "不正なクライアントです".to_string()));
+        }
+        
+        let new_access_token = jwt_core::create_token(&valid_token.user_id, state.private_key.as_bytes(), &state.kid)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("JWTエラー: {}", e)))?;
+        
+        return Ok(Json(TokenRes {
+            access_token: new_access_token,
+            token_type: "Bearer".to_string(),
+            id_token: None,
+            refresh_token: None,
+        }));
     }
-
-    let response = TokenResponse {
-        access_token: jwt_string,
-        token_type: "Bearer".to_string(),
-        id_token,
-    };
-
-    Ok(Json(response))
+    
+    Err((StatusCode::BAD_REQUEST, "サポートされていないgrant_typeです".to_string()))
 }
 
 async fn get_user_info(

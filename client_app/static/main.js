@@ -1,7 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelector("#login-form")
     .addEventListener("submit", async (e) => {
-      console.debug("submit button clicked!");
       e.preventDefault();
       const errorMsg = document.querySelector("#error-message");
       errorMsg.textContent = "";
@@ -19,9 +18,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!response.ok) throw new Error("ログインに失敗しました");
 
         const data = await response.json();
-
-        // JWTをブラウザのLocalStorageに保存してUIを切り替える
         localStorage.setItem("access_token", data.access_token);
+        console.debug(data);
+        if (data.refresh_token) {
+          localStorage.setItem("refresh_token", data.refresh_token);
+        }
         showResult(data.access_token);
       } catch (err) {
         errorMsg.textContent = err.message;
@@ -53,9 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
   });
   
-  console.log(document.querySelector("#verify-local-button"));
   document.querySelector("#verify-local-button").addEventListener("click", async () => {
-    console.debug("button clicked!");
     const token = localStorage.getItem("access_token");
     if (!token) return;
     
@@ -76,6 +75,37 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  document.querySelector("#refresh-button").addEventListener("click", async () => {
+    const refreshToken = localStorage.getItem("refresh_token");
+    if (!refreshToken) return;
+    
+    try {
+      const response = await fetch("/api/refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+      
+      const data = await response.json();
+      const display = document.querySelector("#refresh-display");
+      display.style.display = "block";
+      
+      if (response.ok) {
+        localStorage.setItem("access_token", data.access_token);
+        if (data.refreshToken) {
+          localStorage.setItem("refresh_token", data.refresh_token);
+        }
+        display.textContent = JSON.stringify(data, null, 2);
+      } else {
+        display.textContent = `エラー\n${response.status}\n${JSON.stringify(data, null, 2)}`;
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  
   document.querySelector("#logout-button").addEventListener("click", () => {
     localStorage.removeItem("access_token");
     document.querySelector("#login-section").style.display = "block";

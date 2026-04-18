@@ -2,8 +2,10 @@ use base64::{
     engine::general_purpose::URL_SAFE_NO_PAD, 
     Engine as _,
 };
+use chrono::{Utc, Duration, NaiveDateTime};
 use rand::RngExt;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct AuthCode {
@@ -69,6 +71,20 @@ impl AuthCode {
     }
 }
 
+pub struct RefreshTokenData {
+    pub token: String,
+    pub expires_at: NaiveDateTime,
+}
+
+impl RefreshTokenData {
+    pub fn generate(duration_days: i64) -> Self {
+        Self {
+            token: Uuid::new_v4().to_string(),
+            expires_at: (Utc::now() + Duration::days(duration_days)).naive_utc(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,5 +131,12 @@ mod tests {
             client_id: "wrong_client".to_string(),
         };
         assert!(auth_code.verify_for_exchange(&malicious_request).is_err(), "不正なクライアントIDが検証に成功しました");
+    }
+    
+    #[test]
+    fn test_refresh_token() {
+        let refresh_token = RefreshTokenData::generate(30);
+        assert_eq!(refresh_token.token.len(), 36, "Refreshトークンの長さが期待値と異なります");
+        assert!(refresh_token.expires_at > chrono::Utc::now().naive_utc(), "Refreshトークンの有効期限が現在よりも前になっています");
     }
 }
