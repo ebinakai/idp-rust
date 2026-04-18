@@ -23,7 +23,9 @@ use std::sync::{Arc, Mutex};
 struct AppState {
     pub db: DbClient,
     pub auth_codes: Arc<Mutex<HashMap<String, AuthCode>>>,
-    pub jwt_secret: String,
+    pub private_key: String,
+    pub public_key: String,
+    pub kid: String,
 }
 
 #[derive(Deserialize)]
@@ -64,7 +66,8 @@ async fn main() {
 
     dotenvy::dotenv().ok();
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URLが設定されていません");
-    let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRETが設定されていません");
+    let private_key = std::fs::read_to_string("../keys/private_key.pem").expect("private_key.pem が見つかりません");
+    let public_key = std::fs::read_to_string("../keys/public_key.pem").expect("public_key.pem が見つかりません");
 
     let db = DbClient::new(&database_url)
         .await
@@ -73,7 +76,9 @@ async fn main() {
     let state = AppState { 
         db,
         auth_codes: Arc::new(Mutex::new(HashMap::new())),
-        jwt_secret,
+        private_key,
+        public_key,
+        kid: "key-2026-04".to_string(),
     };
 
     let app = Router::new()
@@ -82,6 +87,7 @@ async fn main() {
         .route("/login", post(login_user))
         .route("/token", post(exchange_token))
         .route("/userinfo", get(get_user_info))
+        .route("/.well-known/jwks.json", get(jwks_handler))
         .with_state(state);
 
     let listener = TcpListener::bind("127.0.0.1:3000")
@@ -207,7 +213,7 @@ async fn exchange_token(
         }
     };
 
-    let jwt_string = match jwt_core::create_token(&user_id, state.jwt_secret.as_bytes()) {
+    let jwt_string = match jwt_core::create_token(&user_id, state.private_key.as_bytes(), &state.kid) {
         Ok(token) => token,
         Err(e) => {
             return Err((
@@ -226,7 +232,8 @@ async fn exchange_token(
                 &user_id, 
                 &payload.client_id,
                 issuer,
-                state.jwt_secret.as_bytes()
+                state.private_key.as_bytes(),
+                &state.kid.as_str()
             ) {
                 Ok(token) => Some(token),
                 Err(e) => {
@@ -266,7 +273,7 @@ async fn get_user_info(
     }
     
     let token = &auth_header[7..];
-    let user_id = match jwt_core::verify_token(token, state.jwt_secret.as_bytes()) {
+    let user_id = match jwt_core::verify_token(token, state.public_key.as_bytes()) {
         Ok(id) => id,
         Err(e) => {
             return Err((
@@ -282,4 +289,10 @@ async fn get_user_info(
     });
 
     Ok(Json(response))
+}
+
+async fn jwks_handler(State(state): State<AppState>) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let jwks = jwt_core::get_jwks(&state.public_key, &state.kid)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(jwks))
 }

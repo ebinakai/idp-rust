@@ -1,14 +1,13 @@
 document.addEventListener("DOMContentLoaded", () => {
-  document
-    .getElementById("login-form")
+  document.querySelector("#login-form")
     .addEventListener("submit", async (e) => {
       console.debug("submit button clicked!");
       e.preventDefault();
-      const errorMsg = document.getElementById("error-message");
+      const errorMsg = document.querySelector("#error-message");
       errorMsg.textContent = "";
 
-      const username = document.getElementById("username").value;
-      const password = document.getElementById("password").value;
+      const username = document.querySelector("#username").value;
+      const password = document.querySelector("#password").value;
       
       try {
         const response = await fetch("/api/login", {
@@ -29,7 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   
-  document.getElementById("get-userinfo-button").addEventListener("click", async () => {
+  document.querySelector("#get-userinfo-button").addEventListener("click", async () => {
     const token = localStorage.getItem("access_token");
     if (!token) return;
     
@@ -45,26 +44,49 @@ document.addEventListener("DOMContentLoaded", () => {
       
       const data = await response.json();
       
-      const display = document.getElementById("userinfo-display");
+      const display = document.querySelector("#userinfo-display");
       display.style.display = "block";
       display.textContent = JSON.stringify(data, null, 2);
     } catch (err) {
       alert(err.message);
     }
     
-  })
+  });
+  
+  console.log(document.querySelector("#verify-local-button"));
+  document.querySelector("#verify-local-button").addEventListener("click", async () => {
+    console.debug("button clicked!");
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+    
+    try {
+      const response = await fetch("/api/verify", {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      const display = document.querySelector("#verify-local-result");
+      display.style.display = "block";
+      display.textContent = JSON.stringify(data, null, 2);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
 
-  document.getElementById("logout-button").addEventListener("click", () => {
+  document.querySelector("#logout-button").addEventListener("click", () => {
     localStorage.removeItem("access_token");
-    document.getElementById("login-section").style.display = "block";
-    document.getElementById("result-section").style.display = "none";
-    document.getElementById("login-form").reset();
+    document.querySelector("#login-section").style.display = "block";
+    document.querySelector("#result-section").style.display = "none";
+    document.querySelector("#login-form").reset();
   });
 
   function showResult(token) {
-    document.getElementById("login-section").style.display = "none";
-    document.getElementById("result-section").style.display = "block";
-    document.getElementById("token-display").value = token;
+    document.querySelector("#login-section").style.display = "none";
+    document.querySelector("#result-section").style.display = "block";
+    document.querySelector("#token-display").value = token;
   }
 
   
