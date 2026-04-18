@@ -44,6 +44,7 @@ pub async fn login(
         grant_type: "authorization_code".to_string(),
         code: idp_login_data.auth_code,
         client_id: state.client_id.to_string(),
+        scope: Some("openid".to_string())
     };
 
     let token_url = format!("{}/token", state.idp_base_url);
@@ -61,6 +62,7 @@ pub async fn login(
 
     Ok(Json(ClientRes {
         access_token: idp_token_data.access_token,
+        id_token: idp_token_data.id_token,
         refresh_token: idp_token_data.refresh_token,
     }))
 }

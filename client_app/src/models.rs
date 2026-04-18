@@ -54,11 +54,13 @@ pub struct IdpTokenReq {
     pub grant_type: String,
     pub code: String,
     pub client_id: String,
+    pub scope: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct IdpTokenRes {
     pub access_token: String,
+    pub id_token: Option<String>,
     pub refresh_token: Option<String>,
     pub _token_type: Option<String>,
 }
@@ -66,6 +68,7 @@ pub struct IdpTokenRes {
 #[derive(Serialize)]
 pub struct ClientRes {
     pub access_token: String,
+    pub id_token: Option<String>,
     pub refresh_token: Option<String>,
 }
 

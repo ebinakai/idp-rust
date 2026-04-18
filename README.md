@@ -36,9 +36,9 @@
   * 認可コードフローによるアクセストークン発行。
 * **Phase 2: OIDC (OpenID Connect) 対応** (Done)
   * `openid` スコープに基づく IDトークンの発行。
-* **Phase 3: セキュリティ強化 (RS256/JWKS)** (In Progress)
+* **Phase 3: セキュリティ強化 (RS256/JWKS)** (Done)
   * 非対称暗号による署名と、`/.well-known/jwks.json` による鍵配布。
-* **Phase 4: トークン・マネジメント** (Planned)
+* **Phase 4: トークン・マネジメント** (In Progress)
   * リフレッシュトークンの導入と有効期限管理の厳格化。
 
 ---
