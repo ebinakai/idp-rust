@@ -28,7 +28,7 @@ impl AuthCode {
 
         let expires_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
+            .expect("システム時刻が異常です")
             .as_secs() + 600;
 
         Self {

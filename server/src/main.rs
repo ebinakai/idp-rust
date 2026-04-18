@@ -49,12 +49,14 @@ struct ExchangePayload {
     pub grant_type: String,
     pub code: String,
     pub client_id: String,
+    pub scope: Option<String>,
 }
 
 #[derive(Serialize)]
 struct TokenResponse {
     pub access_token: String,
     pub token_type: String,
+    pub id_token: Option<String>,
 }
 
 #[tokio::main]
@@ -192,7 +194,7 @@ async fn exchange_token(
     let oauth_req = OAuthTokenRequest {
         grant_type: payload.grant_type,
         code: auth_code.code.clone(),
-        client_id: payload.client_id,
+        client_id: payload.client_id.clone(),
     };
 
     let user_id = match auth_code.verify_for_exchange(&oauth_req) {
@@ -214,10 +216,31 @@ async fn exchange_token(
             ))
         }
     };
+    
+    let mut id_token = None;
+    if let Some(scope) = payload.scope {
+        if scope.contains("openid") {
+            let issuer = "http://localhost:3000";
+            
+            id_token = match jwt_core::create_id_token(
+                &user_id, 
+                &payload.client_id,
+                issuer,
+                state.jwt_secret.as_bytes()
+            ) {
+                Ok(token) => Some(token),
+                Err(e) => {
+                    println!("IDトークンの生成に失敗: {:?}", e);
+                    None
+                },
+            }
+        }
+    }
 
     let response = TokenResponse {
         access_token: jwt_string,
         token_type: "Bearer".to_string(),
+        id_token,
     };
 
     Ok(Json(response))
