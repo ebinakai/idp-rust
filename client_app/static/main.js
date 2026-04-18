@@ -67,7 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       
       const data = await response.json();
-      const display = document.querySelector("#verify-local-result");
+      const display = document.querySelector("#verify-local-display");
       display.style.display = "block";
       display.textContent = JSON.stringify(data, null, 2);
     } catch (err) {
@@ -106,11 +106,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   
-  document.querySelector("#logout-button").addEventListener("click", () => {
+  document.querySelector("#logout-button").addEventListener("click", async () => {
+    const refreshToken = localStorage.getItem("refresh_token");
+    
+    if (refreshToken) {
+      try {
+        await fetch("/api/logout", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ refresh_token: refreshToken })
+        });
+      } catch (err) {
+        console.error("バックエンドのログアウト処理でエラー:", err);
+      }
+    }
+    
     localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     document.querySelector("#login-section").style.display = "block";
     document.querySelector("#result-section").style.display = "none";
     document.querySelector("#login-form").reset();
+    
+    document.querySelector("#token-display").value = "";
+    document.querySelector("#userinfo-display").value = "";
+    document.querySelector("#verify-local-display").value = "";
+    document.querySelector("#refresh-token-display").value = "";
   });
 
   function showResult(token) {
@@ -119,7 +139,6 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelector("#token-display").value = token;
   }
 
-  
   if (localStorage.getItem("access_token")) {
     showResult(localStorage.getItem("access_token"));
   } else {

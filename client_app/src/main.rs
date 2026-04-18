@@ -10,7 +10,7 @@ use jsonwebtoken::{
     Validation, Algorithm,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{self, de};
+use serde_json::{self};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -94,6 +94,11 @@ struct RefreshTokenReq {
     client_id: String,
 }
 
+#[derive(serde::Deserialize)]
+struct LogoutReq {
+    refresh_token: String,
+}
+
 #[tokio::main]
 async fn main() {
     let state = AppState { 
@@ -107,6 +112,7 @@ async fn main() {
         .route("/api/userinfo", get(get_userinfo_handler))
         .route("/api/verify", get(verify_handler))
         .route("/api/refresh", post(refresh_handler))
+        .route("/api/logout", post(logout_handler))
         .fallback_service(ServeDir::new("static"))
         .with_state(state);
 
@@ -287,5 +293,27 @@ async fn refresh_handler(
     } else {
         let error_msg = res.text().await.unwrap_or_default();
         Err((StatusCode::INTERNAL_SERVER_ERROR, format!("トークンのリフレッシュに失敗しました: {}", error_msg)))
+    }
+}
+
+async fn logout_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<LogoutReq>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let request_body = serde_json::json!({
+        "token": payload.refresh_token,
+    });
+    
+    let res = state.reqwest_client
+        .post("http://localhost:3000/revoke")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("IdPとの通信エラー: {}", e)))?;
+    
+    if res.status().is_success() {
+        Ok(StatusCode::OK)
+    } else {
+        Err((StatusCode::INTERNAL_SERVER_ERROR, "IdPでのログアウト処理に失敗しました".to_string()))
     }
 }

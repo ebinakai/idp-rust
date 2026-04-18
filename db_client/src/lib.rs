@@ -100,6 +100,17 @@ impl DbClient {
         
         Ok(())
     }
+    
+    pub async fn delete_refresh_token(&self, token_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "DELETE FROM refresh_tokens WHERE id = ?",
+            token_id
+        )
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -135,6 +146,10 @@ mod tests {
         assert_eq!(user.password_hash, password_hash, "取得したユーザーのパスワードハッシュが一致しません");
         assert!(user.created_at.is_some(), "ユーザーの作成日時が設定されていません");
         assert!(user.updated_at.is_some(), "ユーザーの更新日時が設定されていません");
+        
+        client.delete_user(&user.id).await.expect("ユーザーの削除に失敗しました");
+        let deleted_user = client.get_user_by_name(&username).await.expect("削除後のユーザーの取得に失敗しました");
+        assert!(deleted_user.is_none(), "削除されたユーザーが取得されました");
     }
     
     #[sqlx::test(migrations = "../migrations")]
@@ -173,5 +188,9 @@ mod tests {
         
         let none_token = client.get_valid_refresh_token("non_existent_id").await.expect("クエリ実行に失敗");
         assert!(none_token.is_none(), "存在しないトークンが取得されました");
+        
+        client.delete_refresh_token(&token_id).await.expect("リフレッシュトークンの削除に失敗しました");
+        let deleted_token = client.get_valid_refresh_token(&token_id).await.expect("削除後のトークンの取得に失敗しました");
+        assert!(deleted_token.is_none(), "削除されたトークンが取得されました");
     }
 }

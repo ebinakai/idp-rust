@@ -63,9 +63,13 @@ struct TokenRes {
     pub refresh_token: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct RevokeReq {
+    pub token: String,
+}
+
 #[tokio::main]
 async fn main() {
-
     dotenvy::dotenv().ok();
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URLが設定されていません");
     let private_key = std::fs::read_to_string("../keys/private_key.pem").expect("private_key.pem が見つかりません");
@@ -89,6 +93,7 @@ async fn main() {
         .route("/login", post(login_user))
         .route("/token", post(exchange_token))
         .route("/userinfo", get(get_user_info))
+        .route("/revoke", post(revoke_token))
         .route("/.well-known/jwks.json", get(jwks_handler))
         .with_state(state);
 
@@ -325,6 +330,20 @@ async fn get_user_info(
     });
 
     Ok(Json(response))
+}
+
+async fn revoke_token(
+    State(state): State<AppState>,
+    Json(payload): Json<RevokeReq>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    
+    match state.db.delete_refresh_token(&payload.token).await {
+        Ok(_) => Ok(StatusCode::OK),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR, 
+            format!("トークンの無効化に失敗しました: {:?}", e),
+        )),
+    }
 }
 
 async fn jwks_handler(State(state): State<AppState>) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
