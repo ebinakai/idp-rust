@@ -76,8 +76,9 @@ pub async fn get_userinfo(
         .and_then(|v| v.to_str().ok())
         .ok_or((StatusCode::UNAUTHORIZED, "トークンが見つかりません".to_string()))?;
 
+    let userinfo_url = format!("{}/userinfo", state.idp_base_url);
     let res = state.reqwest_client
-        .get("http://localhost:3000/userinfo")
+        .get(userinfo_url)
         .header("Authorization", auth_header)
         .send()
         .await

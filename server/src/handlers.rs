@@ -141,12 +141,10 @@ pub async fn exchange_token(
         let mut id_token = None;
         if let Some(scope) = payload.scope {
             if scope.contains("openid") {
-                let issuer = "http://localhost:3000";
-                
                 id_token = match jwt_core::create_id_token(
                     &user_id, 
                     &payload.client_id,
-                    issuer,
+                    &state.issuer,
                     state.private_key.as_bytes(),
                     &state.kid.as_str()
                 ) {
@@ -159,7 +157,7 @@ pub async fn exchange_token(
             }
         }
         
-        let refresh_token = oauth_flow::RefreshTokenData::generate(30);
+        let refresh_token = oauth_flow::RefreshTokenData::generate(state.refresh_token_ttl_days);
         let rt = db_client::RefreshToken {
             id: refresh_token.token.clone(),
             user_id: user_id.clone(),
@@ -191,11 +189,23 @@ pub async fn exchange_token(
         let new_access_token = jwt_core::create_token(&valid_token.user_id, state.private_key.as_bytes(), &state.kid)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("JWTエラー: {}", e)))?;
         
+        let new_refresh_token = oauth_flow::RefreshTokenData::generate(state.refresh_token_ttl_days);
+        let rt = db_client::RefreshToken {
+            id: new_refresh_token.token.clone(),
+            user_id: valid_token.user_id,
+            client_id: payload.client_id.clone(),
+            expires_at: new_refresh_token.expires_at,
+        };
+        state.db.save_refresh_token(&rt).await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("DBエラー: {}", e)))?;
+        state.db.delete_refresh_token(&refresh_token).await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("DBエラー: {}", e)))?;
+        
         return Ok(Json(TokenRes {
             access_token: new_access_token,
             token_type: "Bearer".to_string(),
             id_token: None,
-            refresh_token: None,
+            refresh_token: Some(new_refresh_token.token),
         }));
     }
     

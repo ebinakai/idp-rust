@@ -19,6 +19,8 @@ async fn main() {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URLが設定されていません");
     let private_key = fs::read_to_string("../keys/private_key.pem").expect("private_key.pem が見つかりません");
     let public_key = fs::read_to_string("../keys/public_key.pem").expect("public_key.pem が見つかりません");
+    let issuer = env::var("ISSUER").expect("ISSUERが設定されていません");
+    let refresh_token_ttl_days = env::var("REFRESH_TOKEN_TTL_DAYS").unwrap_or("30".to_string()).parse::<i64>().unwrap_or(30);
 
     let db = DbClient::new(&database_url)
         .await
@@ -30,6 +32,8 @@ async fn main() {
         private_key,
         public_key,
         kid: "key-2026-04".to_string(),
+        issuer,
+        refresh_token_ttl_days,
     };
     
     let protected_routes = Router::new()

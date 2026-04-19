@@ -11,6 +11,8 @@ pub struct AppState {
     pub private_key: String,
     pub public_key: String,
     pub kid: String,
+    pub issuer: String,
+    pub refresh_token_ttl_days: i64,
 }
 
 #[derive(Deserialize)]

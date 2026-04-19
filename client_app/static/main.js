@@ -75,6 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelector("#refresh-button").addEventListener("click", async () => {
     const refreshToken = localStorage.getItem("refresh_token");
     if (!refreshToken) return;
+    console.debug(refreshToken);
     
     try {
       const response = await fetch("/api/refresh", {
@@ -91,7 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
       
       if (response.ok) {
         localStorage.setItem("access_token", data.access_token);
-        if (data.refreshToken) {
+        if (data.refresh_token) {
           localStorage.setItem("refresh_token", data.refresh_token);
         }
         display.textContent = JSON.stringify(data, null, 2);
