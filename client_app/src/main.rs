@@ -18,12 +18,15 @@ async fn main() {
     dotenv().ok();
     let idp_base_url = env::var("IDP_BASE_URL")
             .unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let client_url = env::var("CLIENT_URL")
+            .unwrap_or_else(|_| "http://localhost:4000".to_string());
     
     let state = models::AppState { 
         reqwest_client: reqwest::Client::new(),
         jwks_cache: Arc::new(RwLock::new(HashMap::new())),
         client_id: "test_client_app".to_string(),
         idp_base_url: idp_base_url,
+        client_url: client_url,
     };
 
     let app = Router::new()

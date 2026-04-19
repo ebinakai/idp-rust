@@ -26,6 +26,7 @@ pub struct LoginReq {
     pub username: String,
     pub password: String,
     pub client_id: String,
+    pub redirect_uri: String,
 }
 
 #[derive(Serialize)]
@@ -40,6 +41,7 @@ pub struct TokenReq {
     pub client_id: String,
     pub scope: Option<String>,
     pub refresh_token: Option<String>,
+    pub redirect_uri: Option<String>,
 }
 
 #[derive(Serialize)]

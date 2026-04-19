@@ -29,6 +29,7 @@ pub struct AppState {
     pub jwks_cache: JwksCache,
     pub client_id: String,
     pub idp_base_url: String,
+    pub client_url: String,
 }
 
 #[derive(Deserialize)]
@@ -42,6 +43,7 @@ pub struct IdpLoginReq {
     pub username: String,
     pub password: String,
     pub client_id: String,
+    pub redirect_uri: String,
 }
 
 #[derive(Deserialize)]
@@ -55,6 +57,7 @@ pub struct IdpTokenReq {
     pub code: String,
     pub client_id: String,
     pub scope: Option<String>,
+    pub redirect_uri: String,
 }
 
 #[derive(Deserialize)]

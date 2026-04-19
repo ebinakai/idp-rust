@@ -1,38 +1,74 @@
-use sqlx::{
-    mysql::MySqlPoolOptions,
-    MySqlPool
-};
-use chrono::{DateTime, Utc, NaiveDateTime};
+mod models;
 
-#[derive(Debug, Clone)]
-pub struct User {
-    pub id: String,
-    pub username: String,
-    pub password_hash: String,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DbClient {
-    pub pool: MySqlPool,
-}
-
-pub struct RefreshToken {
-    pub id: String,
-    pub user_id: String,
-    pub client_id: String,
-    pub expires_at: NaiveDateTime,
-}
+use std::time::Duration;
+use sqlx::mysql::MySqlPoolOptions;
+pub use models::{DbClient, OAuthClient, User, RefreshToken};
 
 impl DbClient {
     pub async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
         let pool = MySqlPoolOptions::new()
             .max_connections(5)
+            .min_connections(1)
+            .idle_timeout(Duration::from_secs(60 * 10))
+            .max_lifetime(Duration::from_secs(60 * 30))
+            .test_before_acquire(true)
             .connect(database_url)
             .await?;
 
         Ok(Self { pool })
+    }
+    
+    pub async fn create_oauth_client(&self, client: &OAuthClient) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "INSERT INTO oauth_clients (id, name, secret) VALUES (?, ?, ?)",
+            client.id,
+            client.name,
+            client.secret,
+        )
+        .execute(&self.pool)
+        .await?;
+        
+        for redirect_uri in &client.redirect_uris {
+            sqlx::query!(
+                "INSERT INTO oauth_client_redirect_uris (client_id, uri) VALUES (?, ?)",
+                client.id,
+                redirect_uri,
+            )
+            .execute(&self.pool)
+            .await?;
+        }
+
+        Ok(())
+    }
+    
+    pub async fn get_oauth_client(&self, client_id: &str) -> Result<Option<OAuthClient>, sqlx::Error> {
+        let client_record = sqlx::query!(
+            "SELECT id, name, secret FROM oauth_clients WHERE id = ?",
+            client_id,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        
+        let client_record = match client_record {
+            Some(record) => record,
+            None => return Ok(None),
+        };
+        
+        let uri_records = sqlx::query!(
+            "SELECT uri FROM oauth_client_redirect_uris WHERE client_id = ?",
+            client_id,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        
+        let redirect_uris: Vec<String> = uri_records.into_iter().map(|r| r.uri).collect();
+
+        Ok(Some(OAuthClient {
+            id: client_record.id,
+            name: client_record.name,
+            secret: client_record.secret,
+            redirect_uris,
+        }))
     }
 
     pub async fn create_user(&self, user: &User) -> Result<(), sqlx::Error> {
@@ -122,90 +158,5 @@ impl DbClient {
         .await?;
         
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use chrono::Duration;
-    use uuid::Uuid;
-    use super::*;
-
-    #[sqlx::test(migrations = "../migrations")]
-    async fn test_create_and_get_user(pool: MySqlPool) {
-        let client = DbClient { pool };
-
-        let id = Uuid::new_v4().to_string();
-        let username = format!("test_user_{}", id);
-        let password_hash = "$argon2id$v=19$m=4096,t=3,p=1$some_salt$some_hash".to_string();
-
-        let user = User {
-            id: id.clone(),
-            username: username.clone(),
-            password_hash: password_hash.clone(),
-            created_at: None,
-            updated_at: None,
-        };
-
-        client.create_user(&user).await.expect("ユーザーの作成に失敗しました");
-
-        let fetched_user = client.get_user(&id).await.expect("Selectクエリの実行に失敗しました");
-        assert!(fetched_user.is_some(), "ユーザーが見つかりませんでした");
-
-        let fetched_user = client.get_user_by_name(&username).await.expect("Selectクエリの実行に失敗しました");
-        assert!(fetched_user.is_some(), "ユーザーが見つかりませんでした");
-
-        let user = fetched_user.unwrap();
-        assert_eq!(user.id, id, "取得したユーザーのIDが一致しません");
-        assert_eq!(user.username, username, "取得したユーザーの名前が一致しません");
-        assert_eq!(user.password_hash, password_hash, "取得したユーザーのパスワードハッシュが一致しません");
-        assert!(user.created_at.is_some(), "ユーザーの作成日時が設定されていません");
-        assert!(user.updated_at.is_some(), "ユーザーの更新日時が設定されていません");
-        
-        client.delete_user(&user.id).await.expect("ユーザーの削除に失敗しました");
-        let deleted_user = client.get_user_by_name(&username).await.expect("削除後のユーザーの取得に失敗しました");
-        assert!(deleted_user.is_none(), "削除されたユーザーが取得されました");
-    }
-    
-    #[sqlx::test(migrations = "../migrations")]
-    async fn test_get_valid_refresh_token(pool: MySqlPool) {
-        let client = DbClient { pool };
-        
-        let user_id = Uuid::new_v4().to_string();
-        let username = format!("test_user_{}", user_id);
-        let password_hash = "$argon2id$v=19$m=4096,t=3,p=1$some_salt$some_hash".to_string();
-        let user = User {
-            id: user_id.clone(),
-            username: username.clone(),
-            password_hash: password_hash.clone(),
-            created_at: None,
-            updated_at: None,
-        };
-        client.create_user(&user).await.expect("テスト用ユーザーの作成に失敗しました");
-        
-        let token_id = Uuid::new_v4().to_string();
-        let expires_at = (Utc::now() + Duration::days(30)).naive_utc();
-        let token = RefreshToken {
-            id: token_id.clone(),
-            user_id: user_id.clone(),
-            client_id: "test_client_app".to_string(),
-            expires_at,
-        };
-        client.save_refresh_token(&token).await.expect("リフレッシュトークンの保存に失敗しました");
-        
-        let fetched_token = client.get_valid_refresh_token(&token_id).await.expect("トークンの取得に失敗しました");
-        assert!(fetched_token.is_some(), "保存したトークンが見つかりません");
-        
-        let t = fetched_token.unwrap();
-        assert_eq!(t.id, token_id, "トークンのIDが一致しません");
-        assert_eq!(t.user_id, user_id, "ユーザーIDが一致しません");
-        assert_eq!(t.client_id, "test_client_app", "クライアントIDが一致しません");
-        
-        let none_token = client.get_valid_refresh_token("non_existent_id").await.expect("クエリ実行に失敗");
-        assert!(none_token.is_none(), "存在しないトークンが取得されました");
-        
-        client.delete_refresh_token(&token_id).await.expect("リフレッシュトークンの削除に失敗しました");
-        let deleted_token = client.get_valid_refresh_token(&token_id).await.expect("削除後のトークンの取得に失敗しました");
-        assert!(deleted_token.is_none(), "削除されたトークンが取得されました");
     }
 }

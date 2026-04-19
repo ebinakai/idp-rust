@@ -16,13 +16,14 @@ pub async fn login(
     Json(payload): Json<LoginPayload>,
 ) -> Result<Json<ClientRes>, (StatusCode, String)> {
 
+    let redirect_uri = format!("{}/callback", state.client_url);
     let login_req = IdpLoginReq {
         username: payload.username,
         password: payload.password,
-        client_id: state.client_id.to_string()
+        client_id: state.client_id.to_string(),
+        redirect_uri: redirect_uri
     };
 
-    
     let login_url = format!("{}/login", state.idp_base_url);
     let login_res =  state.reqwest_client
         .post(login_url)
@@ -40,11 +41,13 @@ pub async fn login(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Idpレスポンス解析エラー: {}", e)))?;
 
+    let redirect_uri = format!("{}/callback", state.client_url);
     let token_req = IdpTokenReq {
         grant_type: "authorization_code".to_string(),
         code: idp_login_data.auth_code,
         client_id: state.client_id.to_string(),
-        scope: Some("openid".to_string())
+        scope: Some("openid".to_string()),
+        redirect_uri: redirect_uri,
     };
 
     let token_url = format!("{}/token", state.idp_base_url);

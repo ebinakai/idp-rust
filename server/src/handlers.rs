@@ -55,36 +55,26 @@ pub async fn login_user(
     State(state): State<AppState>,
     Json(payload): Json<LoginReq>,
 ) -> Result<Json<LoginRes>, (StatusCode, String)> {
+    let client = match state.db.get_oauth_client(&payload.client_id).await {
+        Ok(Some(client)) => client,
+        Ok(None) => return Err((StatusCode::UNAUTHORIZED, "クライアントが見つかりません".to_string())),
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("クライアントの取得に失敗しました: {:?}", e))),
+    };
+    
+    if !client.redirect_uris.contains(&payload.redirect_uri) {
+        return Err((StatusCode::UNAUTHORIZED, "リダイレクトURIが無効です".to_string()));
+    }
+
     let user = match state.db.get_user_by_name(&payload.username).await {
         Ok(Some(user)) => user,
-        Ok(None) => {
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                "ユーザー名またはパスワードが間違っています".to_string(),
-            ));
-        }
-        Err(e) => {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("データベースエラー: {:?}", e),
-            ));
-        }
+        Ok(None) => return Err((StatusCode::UNAUTHORIZED, "ユーザー名またはパスワードが間違っています".to_string())),
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("データベースエラー: {:?}", e))),
     };
 
     match crypto::verify_password(&payload.password, &user.password_hash) {
         Ok(true) => {},
-        Ok(false) => {
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                "ユーザー名またはパスワードが間違っています".to_string(),
-            ))
-        },
-        Err(e) => {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("パスワードの検証に失敗しました: {:?}", e),
-            ))
-        },
+        Ok(false) => return Err((StatusCode::UNAUTHORIZED, "ユーザー名またはパスワードが間違っています".to_string())),
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("パスワードの検証に失敗しました: {:?}", e))),
     };
 
     let auth_code = AuthCode::new(&user.id, &payload.client_id);
@@ -101,6 +91,17 @@ pub async fn exchange_token(
     Json(payload): Json<TokenReq>,
 ) -> Result<Json<TokenRes>, (StatusCode, String)> {
     if payload.grant_type == "authorization_code" {
+        let redirect_uri = payload.redirect_uri.ok_or((StatusCode::BAD_REQUEST, "redirect_uriが必要です".to_string()))?;
+        let client = match state.db.get_oauth_client(&payload.client_id).await {
+            Ok(Some(client)) => client,
+            Ok(None) => return Err((StatusCode::UNAUTHORIZED, "クライアントが見つかりません".to_string())),
+            Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("クライアントの取得に失敗しました: {:?}", e))),
+        };
+        
+        if !client.redirect_uris.contains(&redirect_uri) {
+            return Err((StatusCode::UNAUTHORIZED, "リダイレクトURIが無効です".to_string()));
+        }
+        
         let code = payload.code.ok_or((StatusCode::BAD_REQUEST, "codeが必要です".to_string()))?;
         let auth_code = match state.auth_codes.lock().unwrap().remove(&code) {
             Some(code) => code,
