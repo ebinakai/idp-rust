@@ -13,19 +13,13 @@ use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
 
-use models::{AppState};
-use handlers::{
-    login, get_userinfo, verify_token, 
-    refresh, logout
-};
-
 #[tokio::main]
 async fn main() {
     dotenv().ok();
     let idp_base_url = env::var("IDP_BASE_URL")
             .unwrap_or_else(|_| "http://localhost:3000".to_string());
     
-    let state = AppState { 
+    let state = models::AppState { 
         reqwest_client: reqwest::Client::new(),
         jwks_cache: Arc::new(RwLock::new(HashMap::new())),
         client_id: "test_client_app".to_string(),
@@ -33,11 +27,11 @@ async fn main() {
     };
 
     let app = Router::new()
-        .route("/api/login", post(login))
-        .route("/api/userinfo", get(get_userinfo))
-        .route("/api/verify", get(verify_token))
-        .route("/api/refresh", post(refresh))
-        .route("/api/logout", post(logout))
+        .route("/api/login", post(handlers::login))
+        .route("/api/userinfo", get(handlers::get_userinfo))
+        .route("/api/verify", get(handlers::verify_token))
+        .route("/api/refresh", post(handlers::refresh))
+        .route("/api/logout", post(handlers::logout))
         .fallback_service(ServeDir::new("static"))
         .with_state(state);
 
