@@ -77,6 +77,18 @@ impl DbClient {
 
         Ok(row)
     }
+    
+    pub async fn get_user(&self, user_id: &str) -> Result<Option<User>, sqlx::Error> {
+        let user = sqlx::query_as!(
+            User,
+            "SELECT id, username, password_hash, created_at, updated_at FROM users WHERE id = ?",
+            user_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(user)
+    }
 
     pub async fn get_user_by_name(&self, username: &str) -> Result<Option<User>, sqlx::Error> {
         let user = sqlx::query_as!(
@@ -136,6 +148,9 @@ mod tests {
         };
 
         client.create_user(&user).await.expect("ユーザーの作成に失敗しました");
+
+        let fetched_user = client.get_user(&id).await.expect("Selectクエリの実行に失敗しました");
+        assert!(fetched_user.is_some(), "ユーザーが見つかりませんでした");
 
         let fetched_user = client.get_user_by_name(&username).await.expect("Selectクエリの実行に失敗しました");
         assert!(fetched_user.is_some(), "ユーザーが見つかりませんでした");

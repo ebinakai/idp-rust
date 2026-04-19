@@ -1,3 +1,4 @@
+mod middleware;
 mod models;
 mod handlers;
 
@@ -12,13 +13,6 @@ use std::{env, fs};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use models::AppState;
-use handlers::{
-    health_check, register_user, login_user,
-    exchange_token, get_user_info, revoke_token,
-    get_jwks,
-};
-
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -30,22 +24,29 @@ async fn main() {
         .await
         .expect("データベースへの接続に失敗しました");
 
-    let state = AppState { 
+    let state = models::AppState { 
         db,
         auth_codes: Arc::new(Mutex::new(HashMap::new())),
         private_key,
         public_key,
         kid: "key-2026-04".to_string(),
     };
+    
+    let protected_routes = Router::new()
+        .route("/userinfo", get(handlers::get_user_info))
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(), 
+            middleware::auth_guard
+        ));
 
     let app = Router::new()
-        .route("/", get(health_check))
-        .route("/register", post(register_user))
-        .route("/login", post(login_user))
-        .route("/token", post(exchange_token))
-        .route("/userinfo", get(get_user_info))
-        .route("/revoke", post(revoke_token))
-        .route("/.well-known/jwks.json", get(get_jwks))
+        .route("/", get(handlers::health_check))
+        .route("/.well-known/jwks.json", get(handlers::get_jwks))
+        .route("/register", post(handlers::register_user))
+        .route("/login", post(handlers::login_user))
+        .route("/token", post(handlers::exchange_token))
+        .route("/revoke", post(handlers::revoke_token))
+        .merge(protected_routes)
         .with_state(state);
 
     let listener = TcpListener::bind("127.0.0.1:3000")

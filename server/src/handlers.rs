@@ -1,6 +1,7 @@
 use axum::{
+    Extension,
     extract::State,
-    http::{StatusCode, HeaderMap},
+    http::StatusCode,
     Json,
 };
 use crypto;
@@ -203,40 +204,24 @@ pub async fn exchange_token(
 
 pub async fn get_user_info(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    Extension(user_id): Extension<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|value| value.to_str().ok())
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Authorizationヘッダーが存在ません".to_string(),
-        ))?;
+    let user = state.db.get_user(&user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("ユーザーの取得に失敗しました: {:?}", e)))?;
     
-    if !auth_header.starts_with("Bearer ") {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            "Authorizationヘッダーの形式が正しくありません".to_string(),
-        ));
-    }
-    
-    let token = &auth_header[7..];
-    let user_id = match jwt_core::verify_token(token, state.public_key.as_bytes()) {
-        Ok(id) => id,
-        Err(e) => {
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                format!("無効または期限切れのトークンです: {}", e),
-            ));
-        }
+    let user = match user {
+        Some(user) => user,
+        None => return Err((StatusCode::NOT_FOUND, "ユーザーが見つかりません".to_string())),
     };
-    
-    let response = serde_json::json!({
+
+    let user_profile = serde_json::json!({
         "message": "JWTの検証に成功しました。正答なアクセス権を確認しました。",
         "user_id": user_id,
+        "username": user.username,
     });
 
-    Ok(Json(response))
+    Ok(Json(user_profile))
 }
 
 pub async fn revoke_token(
