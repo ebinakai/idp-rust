@@ -1,8 +1,6 @@
-use base64::{
-    engine::general_purpose::URL_SAFE_NO_PAD, 
-    Engine as _,
-};
-use chrono::{Utc, Duration, NaiveDateTime};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use chrono::{Duration, NaiveDateTime, Utc};
+use crypto;
 use rand::RngExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -13,6 +11,8 @@ pub struct AuthCode {
     pub user_id: String,
     pub client_id: String,
     pub expires_at: u64,
+    pub challenge: Option<String>,
+    pub challenge_method: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -31,13 +31,16 @@ impl AuthCode {
         let expires_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("システム時刻が異常です")
-            .as_secs() + 600;
+            .as_secs()
+            + 600;
 
         Self {
             code: code_string,
             user_id: user_id.to_string(),
             client_id: client_id.to_string(),
             expires_at,
+            challenge: None,
+            challenge_method: None,
         }
     }
 
@@ -48,6 +51,18 @@ impl AuthCode {
             .as_secs();
 
         self.expires_at > now
+    }
+
+    pub fn verify_pkce(&self, verifier: &str) -> bool {
+        match self.challenge_method.as_deref() {
+            Some(method) if method.eq_ignore_ascii_case("S256") => {
+                self.challenge == Some(crypto::generate_pkce_challenge(verifier))
+            }
+            Some(method) if method.eq_ignore_ascii_case("plain") => {
+                self.challenge == Some(verifier.to_string())
+            }
+            _ => false,
+        }
     }
 
     pub fn verify_for_exchange(&self, request: &TokenRequest) -> Result<String, &'static str> {

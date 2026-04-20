@@ -22,17 +22,19 @@ pub struct RegisterReq {
     pub password: String,
 }
 
+#[derive(Deserialize)]
+pub struct AuthorizeReq {
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub code_challenge_method: String,
+}
+
 #[derive(serde::Deserialize)]
 pub struct ConsentReq {
     pub client_id: String,
     pub redirect_uri: String,
     pub action: String, // "allow" または "deny" が入る
-}
-
-#[derive(Deserialize)]
-pub struct AuthorizeReq {
-    pub client_id: String,
-    pub redirect_uri: String,
 }
 
 #[derive(Deserialize)]
@@ -51,6 +53,7 @@ pub struct TokenReq {
     pub scope: Option<String>,
     pub refresh_token: Option<String>,
     pub redirect_uri: Option<String>,
+    pub code_verifier: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -82,4 +85,3 @@ pub struct ConsentTemplate {
     pub redirect_uri: String,
     pub username: String,
 }
-

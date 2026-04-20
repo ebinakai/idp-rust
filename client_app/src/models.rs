@@ -44,6 +44,7 @@ pub struct IdpTokenReq {
     pub code: String,
     pub client_id: String,
     pub scope: Option<String>,
+    pub code_verifier: String,
     pub redirect_uri: String,
 }
 

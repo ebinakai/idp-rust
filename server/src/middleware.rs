@@ -1,10 +1,10 @@
+use crate::models::AppState;
 use axum::{
     extract::{Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::Next,
     response::Response,
 };
-use crate::models::AppState;
 
 pub async fn auth_guard(
     State(state): State<AppState>,
@@ -21,13 +21,18 @@ pub async fn auth_guard(
             StatusCode::UNAUTHORIZED,
             "Authorizationヘッダーの形式が正しくありません".to_string(),
         ))?;
-    
+
     let user_id = match jwt_core::verify_token(token, state.public_key.as_bytes()) {
         Ok(id) => id,
-        Err(e) => return Err((StatusCode::UNAUTHORIZED, format!("無効または期限切れのトークンです: {}", e))),
+        Err(e) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                format!("無効または期限切れのトークンです: {}", e),
+            ));
+        }
     };
-    
+
     req.extensions_mut().insert(user_id);
-    
+
     Ok(next.run(req).await)
 }

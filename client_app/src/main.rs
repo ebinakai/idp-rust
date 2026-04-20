@@ -1,9 +1,9 @@
-mod models;
 mod handlers;
+mod models;
 
 use axum::{
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
 use dotenvy::dotenv;
 use std::collections::HashMap;
@@ -12,16 +12,21 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
+use tower_sessions::{MemoryStore, SessionManagerLayer};
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    let idp_base_url = env::var("IDP_BASE_URL")
-            .unwrap_or_else(|_| "http://localhost:3000".to_string());
-    let client_url = env::var("CLIENT_URL")
-            .unwrap_or_else(|_| "http://localhost:4000".to_string());
-    
-    let state = models::AppState { 
+    let idp_base_url =
+        env::var("IDP_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let client_url = env::var("CLIENT_URL").unwrap_or_else(|_| "http://localhost:4000".to_string());
+
+    let session_store = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(false)
+        .with_name("client_app_session_id");
+
+    let state = models::AppState {
         reqwest_client: reqwest::Client::new(),
         jwks_cache: Arc::new(RwLock::new(HashMap::new())),
         client_id: "test_client_app".to_string(),
@@ -30,12 +35,14 @@ async fn main() {
     };
 
     let app = Router::new()
+        .route("/login", get(handlers::login))
         .route("/callback", get(handlers::callback))
         .route("/api/userinfo", get(handlers::get_userinfo))
         .route("/api/verify", get(handlers::verify_token))
         .route("/api/refresh", post(handlers::refresh))
         .route("/api/logout", post(handlers::logout))
         .fallback_service(ServeDir::new("static"))
+        .layer(session_layer)
         .with_state(state);
 
     let listener = TcpListener::bind("127.0.0.1:4000")

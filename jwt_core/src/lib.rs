@@ -1,19 +1,9 @@
-use base64::{
-    engine::general_purpose::URL_SAFE_NO_PAD,
-    Engine as _,
-};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{
-    Algorithm,
-    DecodingKey, EncodingKey,
-    Header, Validation,
-    decode, encode, get_current_timestamp
+    Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode, get_current_timestamp,
 };
-use rsa::{
-    pkcs8::DecodePublicKey,
-    RsaPublicKey,
-    traits::PublicKeyParts,
-};
+use rsa::{RsaPublicKey, pkcs8::DecodePublicKey, traits::PublicKeyParts};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -34,7 +24,7 @@ pub struct IdTokenClaims {
 }
 
 pub fn create_token(
-    user_id: &str, 
+    user_id: &str,
     private_key_pem: &[u8],
     kid: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
@@ -76,15 +66,18 @@ pub fn create_id_token(
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(kid.to_string());
-    
+
     encode(
-        &header, 
+        &header,
         &claims,
         &EncodingKey::from_rsa_pem(private_key_pem)?,
     )
 }
 
-pub fn verify_token(token: &str, public_key_pem: &[u8]) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn verify_token(
+    token: &str,
+    public_key_pem: &[u8],
+) -> Result<String, jsonwebtoken::errors::Error> {
     let key = DecodingKey::from_rsa_pem(public_key_pem)?;
     let validation = Validation::new(Algorithm::RS256);
 
@@ -96,10 +89,10 @@ pub fn verify_token(token: &str, public_key_pem: &[u8]) -> Result<String, jsonwe
 pub fn get_jwks(public_key_pem: &str, kid: &str) -> Result<serde_json::Value, String> {
     let pub_key = RsaPublicKey::from_public_key_pem(public_key_pem)
         .map_err(|e| format!("公開鍵のパースに失敗: {}", e))?;
-    
+
     let n = URL_SAFE_NO_PAD.encode(pub_key.n().to_bytes_be());
     let e = URL_SAFE_NO_PAD.encode(pub_key.e().to_bytes_be());
-    
+
     Ok(json!({
         "keys": [
             {
