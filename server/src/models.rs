@@ -1,3 +1,4 @@
+use askama::Template;
 use db_client::DbClient;
 use oauth_flow::AuthCode;
 use serde::{Deserialize, Serialize};
@@ -21,17 +22,25 @@ pub struct RegisterReq {
     pub password: String,
 }
 
+#[derive(serde::Deserialize)]
+pub struct ConsentReq {
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub action: String, // "allow" または "deny" が入る
+}
+
+#[derive(Deserialize)]
+pub struct AuthorizeReq {
+    pub client_id: String,
+    pub redirect_uri: String,
+}
+
 #[derive(Deserialize)]
 pub struct LoginReq {
     pub username: String,
     pub password: String,
     pub client_id: String,
     pub redirect_uri: String,
-}
-
-#[derive(Serialize)]
-pub struct LoginRes {
-    pub auth_code: String,
 }
 
 #[derive(Deserialize)]
@@ -56,3 +65,21 @@ pub struct TokenRes {
 pub struct RevokeReq {
     pub token: String,
 }
+
+#[derive(Template)]
+#[template(path = "login.html")]
+pub struct LoginTemplate {
+    pub client_id: String,
+    pub client_name: String,
+    pub redirect_uri: String,
+}
+
+#[derive(Template)]
+#[template(path = "consent.html")]
+pub struct ConsentTemplate {
+    pub client_name: String,
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub username: String,
+}
+

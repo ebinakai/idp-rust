@@ -61,6 +61,30 @@ mod tests {
     }
     
     #[sqlx::test(migrations = "../migrations")]
+    async fn test_give_consent(pool: MySqlPool) {
+        let client = DbClient { pool };
+        
+        let user = User { 
+            id: Uuid::new_v4().to_string(),
+            username: "".to_string(),
+            password_hash: "".to_string(),
+            created_at: None,
+            updated_at: None,
+        };
+        let oauth_client = OAuthClient {
+            id: Uuid::new_v4().to_string(),
+            name: "".to_string(),
+            secret: None,
+            redirect_uris: vec![],
+        };
+        client.create_user(&user).await.expect("ユーザーの作成に失敗しました");
+        client.create_oauth_client(&oauth_client).await.expect("クライアントの作成に失敗しました");
+        client.give_consent(&user.id, &oauth_client.id).await.expect("同意の保存に失敗しました");
+        let has_consent = client.has_user_consent(&user.id, &oauth_client.id).await.expect("同意の確認に失敗しました");
+        assert!(has_consent, "同意が保存されていません");
+    }
+    
+    #[sqlx::test(migrations = "../migrations")]
     async fn test_get_valid_refresh_token(pool: MySqlPool) {
         let client = DbClient { pool };
         

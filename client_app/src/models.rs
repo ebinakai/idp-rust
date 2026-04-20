@@ -33,22 +33,9 @@ pub struct AppState {
 }
 
 #[derive(Deserialize)]
-pub struct LoginPayload {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Serialize)]
-pub struct IdpLoginReq {
-    pub username: String,
-    pub password: String,
-    pub client_id: String,
-    pub redirect_uri: String,
-}
-
-#[derive(Deserialize)]
-pub struct IdpLoginRes {
-    pub auth_code: String,
+pub struct CallbackQuery {
+    pub code: Option<String>,
+    pub error: Option<String>,
 }
 
 #[derive(Serialize)]

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>アクセス許可の確認 - IdP</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="consent-box">
+        <div class="app-header">
+            <div class="app-name">{{ client_name }}</div>
+            <p style="color: #666; margin-top: 5px;">があなたのアカウントへのアクセスを求めています</p>
+        </div>
+
+        <div class="user-info">
+            <span style="font-size: 0.9rem; color: #666;">ログイン中のアカウント:</span><br>
+            <strong>{{ username }}</strong> </div>
+
+        <div class="scope-list">
+            <strong>以下の権限が共有されます：</strong>
+            <ul>
+                <li>あなたのプロフィール情報（ユーザーID、名前）</li>
+                <li>アカウントの基本認証ステータス</li>
+            </ul>
+        </div>
+
+        <form action="/consent" method="POST">
+            <input type="hidden" name="client_id" value="{{ client_id }}">
+            <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+
+            <div class="action-buttons">
+                <button type="submit" name="action" value="deny" class="btn btn-deny">キャンセル</button>
+                <button type="submit" name="action" value="allow" class="btn btn-allow">許可する</button>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

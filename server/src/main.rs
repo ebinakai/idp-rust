@@ -9,6 +9,8 @@ use axum::{
 use db_client::{DbClient};
 use dotenvy::dotenv;
 use tokio::net::TcpListener;
+use tower_http::services::ServeDir;
+use tower_sessions::{MemoryStore, SessionManagerLayer};
 use std::{env, fs};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -25,6 +27,10 @@ async fn main() {
     let db = DbClient::new(&database_url)
         .await
         .expect("データベースへの接続に失敗しました");
+    
+    let session_store = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(false);
 
     let state = models::AppState { 
         db,
@@ -47,10 +53,14 @@ async fn main() {
         .route("/", get(handlers::health_check))
         .route("/.well-known/jwks.json", get(handlers::get_jwks))
         .route("/register", post(handlers::register_user))
+        .route("/authorize", get(handlers::authorize))
         .route("/login", post(handlers::login_user))
+        .route("/consent", post(handlers::consent))
         .route("/token", post(handlers::exchange_token))
         .route("/revoke", post(handlers::revoke_token))
+        .nest_service("/static", ServeDir::new("static"))
         .merge(protected_routes)
+        .layer(session_layer)
         .with_state(state);
 
     let listener = TcpListener::bind("127.0.0.1:3000")

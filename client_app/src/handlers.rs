@@ -1,7 +1,7 @@
 use axum::{
-    extract::State,
+    extract::{State, Query},
     http::{StatusCode, HeaderMap},
-    Json,
+    Json, 
 };
 use jsonwebtoken::{
     decode, decode_header,
@@ -11,64 +11,48 @@ use jsonwebtoken::{
 use serde_json::{self};
 use crate::models::*;
 
-pub async fn login(
+pub async fn callback(
     State(state): State<AppState>,
-    Json(payload): Json<LoginPayload>,
+    Query(query): Query<CallbackQuery>,
 ) -> Result<Json<ClientRes>, (StatusCode, String)> {
-
-    let redirect_uri = format!("{}/callback", state.client_url);
-    let login_req = IdpLoginReq {
-        username: payload.username,
-        password: payload.password,
-        client_id: state.client_id.to_string(),
-        redirect_uri: redirect_uri
-    };
-
-    let login_url = format!("{}/login", state.idp_base_url);
-    let login_res =  state.reqwest_client
-        .post(login_url)
-        .json(&login_req)
-        .send()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Idp通信エラー: {}", e)))?;
-
-    if !login_res.status().is_success() {
-        return Err((StatusCode::UNAUTHORIZED, "Idpでの認証に失敗しました".to_string()));
+    if query.error.is_some() {
+        return Err((StatusCode::BAD_REQUEST, "認可が拒否されました".to_string()));
     }
-
-    let idp_login_data: IdpLoginRes = login_res
-        .json()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Idpレスポンス解析エラー: {}", e)))?;
-
+    
+    let code = query.code.ok_or_else(|| (StatusCode::BAD_REQUEST, "コードが提供されていません".to_string()))?;
     let redirect_uri = format!("{}/callback", state.client_url);
     let token_req = IdpTokenReq {
         grant_type: "authorization_code".to_string(),
-        code: idp_login_data.auth_code,
+        code: code,
         client_id: state.client_id.to_string(),
         scope: Some("openid".to_string()),
         redirect_uri: redirect_uri,
     };
-
+    
     let token_url = format!("{}/token", state.idp_base_url);
     let token_res = state.reqwest_client
         .post(token_url)
         .json(&token_req)
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("トークン交換に失敗しました: {}", e)))?;
-
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("トークンの交換に失敗しました: {}", e)))?;
+    
+    if !token_res.status().is_success() {
+        return Err((StatusCode::BAD_REQUEST, "IdPがエラーを返しました".to_string()));
+    }
+    
     let idp_token_data: IdpTokenRes = token_res
         .json()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("JSONパースエラー: {}", e)))?;
-
-    Ok(Json(ClientRes {
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("トークンの解析に失敗しました: {}", e)))?;
+    
+    Ok(Json(ClientRes{
         access_token: idp_token_data.access_token,
         id_token: idp_token_data.id_token,
         refresh_token: idp_token_data.refresh_token,
     }))
 }
+    
 
 pub async fn get_userinfo(
     State(state): State<AppState>,

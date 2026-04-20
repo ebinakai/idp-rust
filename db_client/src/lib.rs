@@ -84,6 +84,30 @@ impl DbClient {
         Ok(())
     }
     
+    pub async fn give_consent(&self, user_id: &str, client_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "INSERT INTO user_consents (user_id, client_id) VALUES (?, ?)",
+            user_id,
+            client_id
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+    
+    pub async fn has_user_consent(&self, user_id: &str, client_id: &str) -> Result<bool, sqlx::Error> {
+        let row = sqlx::query!(
+            "SELECT user_id FROM user_consents WHERE user_id = ? AND client_id = ?",
+            user_id,
+            client_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.is_some())
+    }
+    
     pub async fn save_refresh_token(&self, token: &RefreshToken) -> Result<(), sqlx::Error> {
         sqlx::query!(
             "INSERT INTO refresh_tokens (id, user_id, client_id, expires_at) VALUES (?, ?, ?, ?)",

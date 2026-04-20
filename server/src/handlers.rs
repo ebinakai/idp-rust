@@ -1,8 +1,9 @@
+use askama::Template;
 use axum::{
-    Extension,
-    extract::State,
-    http::StatusCode,
-    Json,
+    Extension, Form, Json, 
+    extract::{Query, State}, 
+    http::StatusCode, 
+    response::{Html, IntoResponse, Redirect}
 };
 use crypto;
 use db_client::{User};
@@ -51,10 +52,37 @@ pub async fn register_user(
     }
 }
 
+pub async fn authorize(
+    State(state): State<AppState>,
+    Query(payload): Query<AuthorizeReq>,
+) -> Result<Html<String>, (StatusCode, String)> {
+    let client = match state.db.get_oauth_client(&payload.client_id).await {
+        Ok(Some(c)) => c,
+        Ok(None) => return Err((StatusCode::BAD_REQUEST, "無効な client_id です".to_string())),
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("クライアントの取得に失敗しました: {:?}", e))),
+    };
+    
+    if !client.redirect_uris.contains(&payload.redirect_uri) {
+        return Err((StatusCode::UNAUTHORIZED, "リダイレクトURIが無効です".to_string()));
+    }
+    
+    let template = LoginTemplate {
+        client_id: client.id,
+        client_name: client.name,
+        redirect_uri: payload.redirect_uri,
+    };
+    
+    let html_string = template.render()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("テンプレートエラー: {}", e)))?;
+    
+    Ok(Html(html_string))
+}
+
 pub async fn login_user(
     State(state): State<AppState>,
-    Json(payload): Json<LoginReq>,
-) -> Result<Json<LoginRes>, (StatusCode, String)> {
+    session: tower_sessions::Session,
+    Form(payload): Form<LoginReq>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     let client = match state.db.get_oauth_client(&payload.client_id).await {
         Ok(Some(client)) => client,
         Ok(None) => return Err((StatusCode::UNAUTHORIZED, "クライアントが見つかりません".to_string())),
@@ -76,14 +104,54 @@ pub async fn login_user(
         Ok(false) => return Err((StatusCode::UNAUTHORIZED, "ユーザー名またはパスワードが間違っています".to_string())),
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("パスワードの検証に失敗しました: {:?}", e))),
     };
+    
+    if state.db.has_user_consent(&user.id, &payload.client_id).await.expect("同意の確認に失敗しました") {
+        let auth_code = AuthCode::new(&user.id, &payload.client_id);
+        state.auth_codes.lock().unwrap().insert(auth_code.code.clone(), auth_code.clone());
+    
+        let redirect_uri = format!("{}?code={}", payload.redirect_uri, auth_code.code);
+        return Ok(Redirect::to(&redirect_uri).into_response());
+    }
+    
+    session.insert("authenticated_user_id", &user.id).await.unwrap();
+    
+    let template = ConsentTemplate {
+        client_name: client.name.clone(),
+        client_id: payload.client_id.clone(),
+        redirect_uri: payload.redirect_uri.clone(),
+        username: user.username.clone(),
+    };
+    
+    let html_str = template.render()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("テンプレートエラー: {}", e)))?;
+    
+    Ok(Html(html_str).into_response())
+}
 
-    let auth_code = AuthCode::new(&user.id, &payload.client_id);
-    state.auth_codes.lock().unwrap().insert(auth_code.code.clone(), auth_code.clone());
+pub async fn consent(
+    State(state): State<AppState>,
+    session: tower_sessions::Session,
+    Form(payload): Form<ConsentReq>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    if payload.action == "deny" {
+        let redirect_url = format!("{}?error=access_denied&error_description=User+denied+access", payload.redirect_uri);
+        return Ok(Redirect::to(&redirect_url))
+    }
 
-    Ok(Json(LoginRes {
-        auth_code: auth_code.code,
-    }))
+    if payload.action == "allow" {
+        let user_id = session.get::<String>("authenticated_user_id").await.unwrap()
+            .ok_or((StatusCode::UNAUTHORIZED, "セッションがタイムアウトしました再度ログインしてください。".to_string()))?;
+        state.db.give_consent(&user_id, &payload.client_id).await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("認可の保存に失敗しました: {}", e)))?;
+        
+        let auth_code = AuthCode::new(&user_id, &payload.client_id);
+        state.auth_codes.lock().unwrap().insert(auth_code.code.clone(), auth_code.clone());
+    
+        let redirect_uri = format!("{}?code={}", payload.redirect_uri, auth_code.code);
+        return Ok(Redirect::to(&redirect_uri));
+    }
 
+    Err((StatusCode::BAD_REQUEST, "actionが無効です".to_string()))
 }
 
 pub async fn exchange_token(
@@ -239,7 +307,6 @@ pub async fn revoke_token(
     State(state): State<AppState>,
     Json(payload): Json<RevokeReq>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    
     match state.db.delete_refresh_token(&payload.token).await {
         Ok(_) => Ok(StatusCode::OK),
         Err(e) => Err((

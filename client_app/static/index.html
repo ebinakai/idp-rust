@@ -17,14 +17,9 @@
         <main>
             <section id="login-section">
                 <h2>Login</h2>
-                <form action="" id="login-form">
-                    <label for="username">Username</label>
-                    <input type="text" id="username" name="username" autocomplete="username" required>
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" autocomplete="current-password" required>
-                    <button id="login-button" type="submit">Login</button>
-                </form>
-                <p id="error-message" class="error"></p>
+                <a href="http://localhost:3000/authorize?client_id=test_client_app&redirect_uri=http://localhost:4000/callback">
+                    <button type="button">Go /authorize endpoint</button>
+                </a>
             </section>
 
             <section id="result-section">

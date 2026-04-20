@@ -30,7 +30,7 @@ async fn main() {
     };
 
     let app = Router::new()
-        .route("/api/login", post(handlers::login))
+        .route("/callback", get(handlers::callback))
         .route("/api/userinfo", get(handlers::get_userinfo))
         .route("/api/verify", get(handlers::verify_token))
         .route("/api/refresh", post(handlers::refresh))
