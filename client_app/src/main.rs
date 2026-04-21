@@ -30,6 +30,7 @@ async fn main() {
         reqwest_client: reqwest::Client::new(),
         jwks_cache: Arc::new(RwLock::new(HashMap::new())),
         client_id: "test_client_app".to_string(),
+        client_secret: "test_client_secret".to_string(),
         idp_base_url: idp_base_url,
         client_url: client_url,
     };

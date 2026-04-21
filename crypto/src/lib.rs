@@ -6,7 +6,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 
-pub fn hash_password(password: &str) -> Result<String, Error> {
+pub fn hash_secret(password: &str) -> Result<String, Error> {
     let salt = SaltString::generate(&mut OsRng);
 
     let argon2 = Argon2::default();
@@ -18,7 +18,7 @@ pub fn hash_password(password: &str) -> Result<String, Error> {
     Ok(password_hash)
 }
 
-pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, Error> {
+pub fn verify_secret(password: &str, password_hash: &str) -> Result<bool, Error> {
     let parsed_hash = PasswordHash::new(password_hash)?;
 
     let is_valid = Argon2::default()
@@ -43,13 +43,13 @@ mod tests {
     fn test_password_hashing_and_verification() {
         let password = "my_super_secret_password";
 
-        let hashed = hash_password(password).expect("ハッシュ化に失敗しました");
+        let hashed = hash_secret(password).expect("ハッシュ化に失敗しました");
         assert!(hashed.starts_with("$argon2"));
 
-        let is_valid = verify_password(password, &hashed).expect("検証に失敗しました");
+        let is_valid = verify_secret(password, &hashed).expect("検証に失敗しました");
         assert!(is_valid);
 
-        let is_invalid = verify_password("wrong_password", &hashed).expect("検証に失敗しました");
+        let is_invalid = verify_secret("wrong_password", &hashed).expect("検証に失敗しました");
         assert!(!is_invalid);
     }
 

@@ -28,6 +28,7 @@ pub struct AppState {
     pub reqwest_client: reqwest::Client,
     pub jwks_cache: JwksCache,
     pub client_id: String,
+    pub client_secret: String,
     pub idp_base_url: String,
     pub client_url: String,
 }
@@ -43,6 +44,7 @@ pub struct IdpTokenReq {
     pub grant_type: String,
     pub code: String,
     pub client_id: String,
+    pub client_secret: String,
     pub scope: Option<String>,
     pub code_verifier: String,
     pub redirect_uri: String,

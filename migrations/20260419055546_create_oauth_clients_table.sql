@@ -17,7 +17,8 @@ CREATE TABLE oauth_client_redirect_uris (
 );
 
 -- 初期データの投入
-INSERT INTO oauth_clients (id, name, secret) VALUES ('test_client_app', 'Test Client App', NULL);
+INSERT INTO oauth_clients (id, name, secret) VALUES 
+('test_client_app', 'Test Client App', "$argon2id$v=19$m=19456,t=2,p=1$8ccd+Ns2njGepGvb7bvp+Q$5rQCOGxTEFDyHklsGHtwqzckKyKQfSt97H3xe9icx4I");
 
 INSERT INTO oauth_client_redirect_uris (client_id, uri) VALUES 
 ('test_client_app', 'http://localhost:4000/callback'),

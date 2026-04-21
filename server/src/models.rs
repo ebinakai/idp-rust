@@ -50,6 +50,7 @@ pub struct TokenReq {
     pub grant_type: String,
     pub code: Option<String>,
     pub client_id: String,
+    pub client_secret: Option<String>,
     pub scope: Option<String>,
     pub refresh_token: Option<String>,
     pub redirect_uri: Option<String>,

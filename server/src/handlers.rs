@@ -17,11 +17,40 @@ pub async fn health_check() -> &'static str {
     "IdP Server is running, and Database connection is healthy!"
 }
 
+pub async fn get_openid_config(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let config = serde_json::json!({
+        "issuer": state.issuer,
+        "authorization_endpoint": format!("{}/authorize", state.issuer),
+        "token_endpoint": format!("{}/token", state.issuer),
+        "userinfo_endpoint": format!("{}/userinfo", state.issuer),
+        "jwks_uri": format!("{}/.well-known/jwks.json", state.issuer),
+        "response_types_supported": ["code"],
+        "subject_types_supported": ["public"],
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "scopes_supported": ["openid"],
+        "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic", "none"],
+        "claims_supported": ["sub", "iss", "aud", "exp", "iat"],
+        "code_challenge_methods_supported": ["S256", "plain"],
+    });
+
+    Ok(Json(config))
+}
+
+pub async fn get_jwks(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let jwks = jwt_core::get_jwks(&state.public_key, &state.kid)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(jwks))
+}
+
 pub async fn register_user(
     State(state): State<AppState>,
     Json(payload): Json<RegisterReq>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let password_hash = match crypto::hash_password(&payload.password) {
+    let password_hash = match crypto::hash_secret(&payload.password) {
         Ok(hash) => hash,
         Err(_) => {
             return Err((
@@ -141,7 +170,7 @@ pub async fn login_user(
         }
     };
 
-    match crypto::verify_password(&payload.password, &user.password_hash) {
+    match crypto::verify_secret(&payload.password, &user.password_hash) {
         Ok(true) => {}
         Ok(false) => {
             return Err((
@@ -278,6 +307,23 @@ pub async fn exchange_token(
                 ));
             }
         };
+
+        if let Some(expected_secret) = &client.secret {
+            let provided_secret = payload.client_secret.as_ref().ok_or((
+                StatusCode::UNAUTHORIZED,
+                "このクライアントは client_secret が必要です".to_string(),
+            ))?;
+
+            match crypto::verify_secret(provided_secret, expected_secret) {
+                Ok(true) => {}
+                _ => {
+                    return Err((
+                        StatusCode::UNAUTHORIZED,
+                        "client_secret が不正です".to_string(),
+                    ));
+                }
+            }
+        }
 
         if !client.redirect_uris.contains(&redirect_uri) {
             return Err((
@@ -497,12 +543,4 @@ pub async fn revoke_token(
             format!("トークンの無効化に失敗しました: {:?}", e),
         )),
     }
-}
-
-pub async fn get_jwks(
-    State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let jwks = jwt_core::get_jwks(&state.public_key, &state.kid)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    Ok(Json(jwks))
 }

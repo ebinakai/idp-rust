@@ -55,6 +55,10 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(handlers::health_check))
+        .route(
+            "/.well-known/openid-configuration",
+            get(handlers::get_openid_config),
+        )
         .route("/.well-known/jwks.json", get(handlers::get_jwks))
         .route("/register", post(handlers::register_user))
         .route("/authorize", get(handlers::authorize))

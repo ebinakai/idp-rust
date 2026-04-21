@@ -63,6 +63,7 @@ pub async fn callback(
         grant_type: "authorization_code".to_string(),
         code: code,
         client_id: state.client_id.to_string(),
+        client_secret: state.client_secret.to_string(),
         scope: Some("openid".to_string()),
         redirect_uri: redirect_uri,
         code_verifier: code_verifier,
