@@ -103,6 +103,14 @@ mod tests {
             "ユーザーの更新日時が設定されていません"
         );
 
+        let new_hash = "$argon2id$v=19$m=4096,t=3,p=1$new_salt$new_hash".to_string();
+        client
+            .update_user_password(&id, &new_hash)
+            .await
+            .expect("パスワードの更新に失敗しました");
+        let updated_pw_user = client.get_user(&id).await.unwrap().unwrap();
+        assert_eq!(updated_pw_user.password_hash, new_hash);
+
         client
             .delete_user(&user.id)
             .await
@@ -276,6 +284,86 @@ mod tests {
         assert!(
             client
                 .list_user_consents(&user_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[sqlx::test(migrations = "../migrations")]
+    async fn test_cascade_deletes_for_user_and_client(pool: MySqlPool) {
+        let client = DbClient { pool };
+
+        let user_id = Uuid::new_v4().to_string();
+        let user = User {
+            id: user_id.clone(),
+            username: format!("cascade_user_{}", user_id),
+            password_hash: "hash".to_string(),
+            is_admin: false,
+            created_at: None,
+            updated_at: None,
+        };
+        client.create_user(&user).await.unwrap();
+
+        let client_id = Uuid::new_v4().to_string();
+        let oauth_client = OAuthClient {
+            id: client_id.clone(),
+            name: "Cascade App".to_string(),
+            secret: None,
+            redirect_uris: vec!["http://localhost:4000/callback".to_string()],
+        };
+        client.create_oauth_client(&oauth_client).await.unwrap();
+        client.give_consent(&user_id, &client_id).await.unwrap();
+
+        let token_id = Uuid::new_v4().to_string();
+        let token = RefreshToken {
+            id: token_id.clone(),
+            user_id: user_id.clone(),
+            client_id: client_id.clone(),
+            expires_at: (Utc::now() + Duration::days(7)).naive_utc(),
+        };
+        client.save_refresh_token(&token).await.unwrap();
+
+        // クライアント削除で consent と refresh_token が連鎖削除される
+        sqlx::query("DELETE FROM oauth_clients WHERE id = ?")
+            .bind(&client_id)
+            .execute(&client.pool)
+            .await
+            .unwrap();
+        assert!(!client.has_user_consent(&user_id, &client_id).await.unwrap());
+        assert!(
+            client
+                .get_valid_refresh_token(&token_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        // ユーザー削除でも consent と webauthn_credentials が連鎖削除される
+        client
+            .give_consent(&user_id, "test_client_app")
+            .await
+            .unwrap();
+        let passkey = PasskeyRecord {
+            id: Uuid::new_v4().to_string(),
+            user_id: user_id.clone(),
+            credential_id: format!("cred_{}", Uuid::new_v4()),
+            label: "Test Key".to_string(),
+            passkey_json: "{}".to_string(),
+            created_at: None,
+        };
+        client.save_passkey(&passkey).await.unwrap();
+
+        client.delete_user(&user_id).await.unwrap();
+        assert!(
+            !client
+                .has_user_consent(&user_id, "test_client_app")
+                .await
+                .unwrap()
+        );
+        assert!(
+            client
+                .list_passkeys_by_user(&user_id)
                 .await
                 .unwrap()
                 .is_empty()

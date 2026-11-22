@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import {
   accountLogin,
   accountLogout,
+  changePassword,
   deletePasskey,
   fetchMe,
   finishPasskeyAuth,
@@ -37,6 +38,11 @@ export function AccountPage() {
 
   // Passkey registration form
   const [passkeyLabel, setPasskeyLabel] = useState("");
+
+  // Password change form
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const reloadMe = useCallback(async () => {
     const data = await fetchMe();
@@ -195,6 +201,48 @@ export function AccountPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "連携解除に失敗しました";
       setNotice({ kind: "error", title: "連携解除エラー", body: msg });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleChangePassword(e: FormEvent) {
+    e.preventDefault();
+    if (busyAction) return;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setNotice({
+        kind: "error",
+        title: "入力エラー",
+        body: "現在のパスワード・新しいパスワード・確認用パスワードをすべて入力してください。",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setNotice({
+        kind: "error",
+        title: "入力エラー",
+        body: "新しいパスワードと確認用パスワードが一致しません。",
+      });
+      return;
+    }
+
+    setBusyAction("change_pw");
+    setNotice(null);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setNotice({
+        kind: "success",
+        title: "パスワードを変更しました",
+        body: "次回のログインから新しいパスワードを使用できます。",
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "パスワードの変更に失敗しました";
+      setNotice({ kind: "error", title: "パスワード変更エラー", body: msg });
     } finally {
       setBusyAction(null);
     }
@@ -438,6 +486,69 @@ export function AccountPage() {
                     ))}
                   </ul>
                 )}
+              </div>
+            </section>
+            {/* Section 4: パスワード変更 */}
+            <section className="dads-card">
+              <div className="dads-card__main">
+                <h2 className="dads-heading-2">パスワード変更</h2>
+                <p className="dads-lead">
+                  現在のパスワードを確認したうえで、新しいパスワードへ変更します。
+                </p>
+
+                <form className="dads-form" onSubmit={handleChangePassword}>
+                  <div className="dads-field">
+                    <label className="dads-label" htmlFor="pw-current">
+                      現在のパスワード<span className="dads-req">※必須</span>
+                    </label>
+                    <input
+                      id="pw-current"
+                      type="password"
+                      className="dads-input"
+                      autoComplete="current-password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="dads-field">
+                    <label className="dads-label" htmlFor="pw-new">
+                      新しいパスワード<span className="dads-req">※必須</span>
+                    </label>
+                    <input
+                      id="pw-new"
+                      type="password"
+                      className="dads-input"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="dads-field">
+                    <label className="dads-label" htmlFor="pw-confirm">
+                      新しいパスワード（確認）<span className="dads-req">※必須</span>
+                    </label>
+                    <input
+                      id="pw-confirm"
+                      type="password"
+                      className="dads-input"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="dads-btn-group">
+                    <button
+                      type="submit"
+                      className="dads-btn dads-btn--primary"
+                      aria-busy={busyAction === "change_pw"}
+                    >
+                      {busyAction === "change_pw" ? "変更中..." : "パスワードを変更"}
+                    </button>
+                  </div>
+                </form>
               </div>
             </section>
           </>

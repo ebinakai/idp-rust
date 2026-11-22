@@ -142,6 +142,7 @@ async fn main() {
         .route("/api/me", get(handlers::get_me))
         .route("/api/me/login", post(handlers::account_login))
         .route("/api/me/logout", post(handlers::account_logout))
+        .route("/api/me/password", post(handlers::change_my_password))
         .route(
             "/api/me/consents/{client_id}",
             delete(handlers::revoke_my_consent),

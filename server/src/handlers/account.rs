@@ -46,6 +46,12 @@ pub struct AccountLoginReq {
 }
 
 #[derive(Deserialize)]
+pub struct ChangePasswordReq {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[derive(Deserialize)]
 pub struct PasskeyRegStartReq {
     pub label: Option<String>,
 }
@@ -207,6 +213,53 @@ pub async fn account_logout(session: Session) -> Result<StatusCode, AppError> {
         .remove::<String>("account_user_id")
         .await
         .map_err(AppError::internal)?;
+    Ok(StatusCode::OK)
+}
+
+pub async fn change_my_password(
+    State(state): State<AppState>,
+    session: Session,
+    Json(payload): Json<ChangePasswordReq>,
+) -> Result<StatusCode, AppError> {
+    let user_id = require_account_user_id(&session).await?;
+    if payload.current_password.is_empty() || payload.new_password.is_empty() {
+        return Err(AppError::invalid_request(
+            "現在のパスワードと新しいパスワードを入力してください",
+        ));
+    }
+
+    let user = state
+        .db
+        .get_user(&user_id)
+        .await
+        .map_err(AppError::internal)?
+        .ok_or_else(|| AppError::unauthorized("ユーザーが見つかりません"))?;
+
+    let current = payload.current_password;
+    let current_hash = user.password_hash;
+    let is_valid =
+        tokio::task::spawn_blocking(move || crypto::verify_secret(&current, &current_hash))
+            .await
+            .map_err(AppError::internal)?
+            .map_err(AppError::internal)?;
+
+    if !is_valid {
+        return Err(AppError::unauthorized("現在のパスワードが正しくありません"));
+    }
+
+    let new_password = payload.new_password;
+    let new_hash = tokio::task::spawn_blocking(move || crypto::hash_secret(&new_password))
+        .await
+        .map_err(AppError::internal)?
+        .map_err(|e| AppError::internal(format!("パスワードのハッシュ化に失敗しました: {}", e)))?;
+
+    state
+        .db
+        .update_user_password(&user.id, &new_hash)
+        .await
+        .map_err(AppError::internal)?;
+
+    session.cycle_id().await.map_err(AppError::internal)?;
     Ok(StatusCode::OK)
 }
 

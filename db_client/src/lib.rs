@@ -216,6 +216,20 @@ impl DbClient {
         Ok(res.rows_affected() > 0)
     }
 
+    pub async fn update_user_password(
+        &self,
+        user_id: &str,
+        password_hash: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+            .bind(password_hash)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn delete_user(&self, user_id: &str) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM users WHERE id = ?")
             .bind(user_id)

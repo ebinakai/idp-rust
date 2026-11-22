@@ -145,6 +145,17 @@ export function accountLogout(): Promise<void> {
   return requestJson<void>("/api/me/logout", { method: "POST" });
 }
 
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return requestJson<void>("/api/me/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
+
 export function revokeConsent(clientId: string): Promise<void> {
   return requestJson<void>(`/api/me/consents/${encodeURIComponent(clientId)}`, {
     method: "DELETE",
