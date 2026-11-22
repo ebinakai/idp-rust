@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   accountLogin,
   accountLogout,
@@ -31,6 +31,7 @@ export function AccountPage() {
   const [me, setMe] = useState<MeRes | null>(null);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const autoPasskeyAttempted = useRef(false);
 
   // Login form
   const [username, setUsername] = useState("");
@@ -90,36 +91,50 @@ export function AccountPage() {
     }
   }
 
-  async function handlePasskeyLogin() {
-    if (busyAction) return;
-    if (!username.trim()) {
-      setNotice({
-        kind: "error",
-        title: "入力エラー",
-        body: "パスキーでログインするにはユーザー名を入力してください。",
-      });
+  const handlePasskeyLogin = useCallback(
+    async (options?: { silentCancel?: boolean }) => {
+      if (busyAction) return;
+
+      setBusyAction("login_pk");
+      if (!options?.silentCancel) {
+        setNotice(null);
+      }
+      try {
+        const rcr = await startPasskeyAuth(username.trim());
+        const credential = await getPasskeyAssertion(rcr);
+        await finishPasskeyAuth(credential, "account");
+        await reloadMe();
+        setNotice({
+          kind: "success",
+          title: "パスキーでログインしました",
+          body: "生体認証・セキュリティキーによるサインインが完了しました。",
+        });
+      } catch (err: unknown) {
+        const isUserCancel =
+          err instanceof DOMException &&
+          (err.name === "NotAllowedError" || err.name === "AbortError");
+        if (options?.silentCancel && isUserCancel) {
+          return;
+        }
+        const msg = err instanceof Error ? err.message : "パスキーログインに失敗しました";
+        setNotice({ kind: "error", title: "パスキー認証エラー", body: msg });
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [busyAction, reloadMe, username],
+  );
+
+  useEffect(() => {
+    if (loading || !me || me.logged_in || me.needs_setup || autoPasskeyAttempted.current) {
       return;
     }
-
-    setBusyAction("login_pk");
-    setNotice(null);
-    try {
-      const rcr = await startPasskeyAuth(username.trim());
-      const credential = await getPasskeyAssertion(rcr);
-      await finishPasskeyAuth(credential, "account");
-      await reloadMe();
-      setNotice({
-        kind: "success",
-        title: "パスキーでログインしました",
-        body: "生体認証・セキュリティキーによるサインインが完了しました。",
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "パスキーログインに失敗しました";
-      setNotice({ kind: "error", title: "パスキー認証エラー", body: msg });
-    } finally {
-      setBusyAction(null);
+    if (!window.PublicKeyCredential || !navigator.credentials) {
+      return;
     }
-  }
+    autoPasskeyAttempted.current = true;
+    void handlePasskeyLogin({ silentCancel: true });
+  }, [handlePasskeyLogin, loading, me]);
 
   async function handleLogout() {
     if (busyAction) return;
@@ -311,8 +326,11 @@ export function AccountPage() {
                 <form className="dads-form" onSubmit={handlePasswordLogin}>
                   <div className="dads-field">
                     <label className="dads-label" htmlFor="me-username">
-                      ユーザー名<span className="dads-req">※必須</span>
+                      ユーザー名
                     </label>
+                    <p className="dads-support-text">
+                      パスキーのみでログインする場合はユーザー名・パスワードの入力は不要です。
+                    </p>
                     <input
                       id="me-username"
                       type="text"
@@ -344,7 +362,7 @@ export function AccountPage() {
                     <button
                       type="button"
                       className="dads-btn dads-btn--secondary"
-                      onClick={handlePasskeyLogin}
+                      onClick={() => void handlePasskeyLogin()}
                       aria-busy={busyAction === "login_pk"}
                     >
                       {busyAction === "login_pk" ? "認証中..." : "パスキーでログイン"}

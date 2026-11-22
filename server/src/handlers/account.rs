@@ -10,9 +10,9 @@ use db_client::{PasskeyRecord, UserConsentRecord};
 use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
 use webauthn_rs::prelude::{
-    CreationChallengeResponse, CredentialID, Passkey, PasskeyAuthentication, PasskeyRegistration,
-    PublicKeyCredential, RegisterPublicKeyCredential, RequestChallengeResponse,
-    Uuid as WebauthnUuid,
+    CreationChallengeResponse, CredentialID, DiscoverableAuthentication, Passkey,
+    PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential, RegisterPublicKeyCredential,
+    RequestChallengeResponse, Uuid as WebauthnUuid,
 };
 
 #[derive(Serialize)]
@@ -58,7 +58,14 @@ pub struct PasskeyRegStartReq {
 
 #[derive(Deserialize)]
 pub struct PasskeyAuthStartReq {
+    #[serde(default)]
     pub username: String,
+}
+
+#[derive(Serialize, Deserialize)]
+enum PasskeyAuthSession {
+    UserScoped(PasskeyAuthentication, String),
+    Discoverable(DiscoverableAuthentication),
 }
 
 #[derive(Deserialize)]
@@ -402,7 +409,20 @@ pub async fn start_passkey_auth(
 ) -> Result<Json<RequestChallengeResponse>, AppError> {
     let username = payload.username.trim();
     if username.is_empty() {
-        return Err(AppError::invalid_request("ユーザー名を入力してください"));
+        let (rcr, auth_state) = state
+            .webauthn
+            .start_discoverable_authentication()
+            .map_err(AppError::internal)?;
+
+        session
+            .insert(
+                "passkey_auth_state",
+                PasskeyAuthSession::Discoverable(auth_state),
+            )
+            .await
+            .map_err(AppError::internal)?;
+
+        return Ok(Json(rcr));
     }
 
     let user = state
@@ -436,7 +456,10 @@ pub async fn start_passkey_auth(
         .map_err(AppError::internal)?;
 
     session
-        .insert("passkey_auth_state", (auth_state, user.id))
+        .insert(
+            "passkey_auth_state",
+            PasskeyAuthSession::UserScoped(auth_state, user.id),
+        )
         .await
         .map_err(AppError::internal)?;
 
@@ -448,22 +471,58 @@ pub async fn finish_passkey_auth(
     session: Session,
     Json(req): Json<PasskeyAuthFinishReq>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let (auth_state, user_id) = session
-        .remove::<(PasskeyAuthentication, String)>("passkey_auth_state")
+    let auth_session = session
+        .remove::<PasskeyAuthSession>("passkey_auth_state")
         .await
         .map_err(AppError::internal)?
         .ok_or_else(|| AppError::invalid_request("パスキー認証セッションが見つかりません"))?;
 
-    let auth_result = state
-        .webauthn
-        .finish_passkey_authentication(&req.credential, &auth_state)
-        .map_err(|e| AppError::unauthorized(format!("パスキー認証に失敗しました: {}", e)))?;
-
-    let records = state
-        .db
-        .list_passkeys_by_user(&user_id)
-        .await
-        .map_err(AppError::internal)?;
+    let (user_id, auth_result, records) = match auth_session {
+        PasskeyAuthSession::UserScoped(auth_state, user_id) => {
+            let auth_result = state
+                .webauthn
+                .finish_passkey_authentication(&req.credential, &auth_state)
+                .map_err(|e| {
+                    AppError::unauthorized(format!("パスキー認証に失敗しました: {}", e))
+                })?;
+            let records = state
+                .db
+                .list_passkeys_by_user(&user_id)
+                .await
+                .map_err(AppError::internal)?;
+            (user_id, auth_result, records)
+        }
+        PasskeyAuthSession::Discoverable(auth_state) => {
+            let (user_uuid, cred_id) = state
+                .webauthn
+                .identify_discoverable_authentication(&req.credential)
+                .map_err(|e| {
+                    AppError::unauthorized(format!("パスキー認証に失敗しました: {}", e))
+                })?;
+            let user_id = user_uuid.to_string();
+            let records = state
+                .db
+                .list_passkeys_by_user(&user_id)
+                .await
+                .map_err(AppError::internal)?;
+            let matched_passkey = records
+                .iter()
+                .filter_map(|r| serde_json::from_str::<Passkey>(&r.passkey_json).ok())
+                .find(|p| p.cred_id().as_slice() == cred_id)
+                .ok_or_else(|| AppError::unauthorized("登録されたパスキーが見つかりません"))?;
+            let auth_result = state
+                .webauthn
+                .finish_discoverable_authentication_v2(
+                    &req.credential,
+                    auth_state,
+                    &matched_passkey,
+                )
+                .map_err(|e| {
+                    AppError::unauthorized(format!("パスキー認証に失敗しました: {}", e))
+                })?;
+            (user_id, auth_result, records)
+        }
+    };
 
     for record in records {
         if let Ok(mut passkey) = serde_json::from_str::<Passkey>(&record.passkey_json)

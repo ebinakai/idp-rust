@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   type AuthActionRes,
   type AuthContextRes,
@@ -22,6 +22,7 @@ export function AuthorizePage() {
   const [consentData, setConsentData] = useState<ConsentState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const autoPasskeyAttempted = useRef(false);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -70,28 +71,45 @@ export function AuthorizePage() {
     }
   }
 
-  async function handlePasskeyLogin() {
-    if (busy) return;
+  const handlePasskeyLogin = useCallback(
+    async (options?: { silentCancel?: boolean }) => {
+      if (busy) return;
 
-    if (!username.trim()) {
-      setError("パスキーでログインするにはユーザー名を入力してください。");
+      setBusy("passkey");
+      if (!options?.silentCancel) {
+        setError(null);
+      }
+      try {
+        const rcr = await startPasskeyAuth(username.trim());
+        const credential = await getPasskeyAssertion(rcr);
+        const res = (await finishPasskeyAuth(credential, "authorize")) as AuthActionRes;
+        applyAuthResult(res);
+      } catch (err: unknown) {
+        const isUserCancel =
+          err instanceof DOMException &&
+          (err.name === "NotAllowedError" || err.name === "AbortError");
+        if (options?.silentCancel && isUserCancel) {
+          return;
+        }
+        const msg = err instanceof Error ? err.message : "パスキー認証に失敗しました";
+        setError(msg);
+      } finally {
+        setBusy(null);
+      }
+    },
+    [busy, username],
+  );
+
+  useEffect(() => {
+    if (loading || !context || consentData || autoPasskeyAttempted.current) {
       return;
     }
-
-    setBusy("passkey");
-    setError(null);
-    try {
-      const rcr = await startPasskeyAuth(username.trim());
-      const credential = await getPasskeyAssertion(rcr);
-      const res = (await finishPasskeyAuth(credential, "authorize")) as AuthActionRes;
-      applyAuthResult(res);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "パスキー認証に失敗しました";
-      setError(msg);
-    } finally {
-      setBusy(null);
+    if (!window.PublicKeyCredential || !navigator.credentials) {
+      return;
     }
-  }
+    autoPasskeyAttempted.current = true;
+    void handlePasskeyLogin({ silentCancel: true });
+  }, [consentData, context, handlePasskeyLogin, loading]);
 
   async function handleConsent(action: "allow" | "deny") {
     if (busy) return;
@@ -185,8 +203,11 @@ export function AuthorizePage() {
               <form className="dads-form" onSubmit={handleLogin}>
                 <div className="dads-field">
                   <label className="dads-label" htmlFor="auth-username">
-                    ユーザー名<span className="dads-req">※必須</span>
+                    ユーザー名
                   </label>
+                  <p className="dads-support-text">
+                    パスキーのみでログインする場合はユーザー名・パスワードの入力は不要です。
+                  </p>
                   <input
                     id="auth-username"
                     type="text"
@@ -218,7 +239,7 @@ export function AuthorizePage() {
                   <button
                     type="button"
                     className="dads-btn dads-btn--secondary"
-                    onClick={handlePasskeyLogin}
+                    onClick={() => void handlePasskeyLogin()}
                     aria-busy={busy === "passkey"}
                   >
                     {busy === "passkey" ? "認証中..." : "パスキーでログイン"}
