@@ -2,7 +2,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::MySqlPool;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct User {
     pub id: String,
     pub username: String,
@@ -24,6 +24,7 @@ pub struct DbClient {
     pub pool: MySqlPool,
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct RefreshToken {
     pub id: String,
     pub user_id: String,

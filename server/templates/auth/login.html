@@ -13,9 +13,6 @@
     <p>ログインして認可を完了してください。</p>
 
     <form action="/login" method="POST">
-        <input type="hidden" name="client_id" value="{{ client_id }}">
-        <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
-
         <div>
             <label for="username">ユーザー名:</label>
             <input type="text" id="username" name="username" autocomplete="username" required>

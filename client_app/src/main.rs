@@ -8,6 +8,7 @@ use axum::{
 use dotenvy::dotenv;
 use std::collections::HashMap;
 use std::env;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
@@ -31,18 +32,25 @@ async fn main() {
         jwks_cache: Arc::new(RwLock::new(HashMap::new())),
         client_id: "test_client_app".to_string(),
         client_secret: "test_client_secret".to_string(),
-        idp_base_url: idp_base_url,
-        client_url: client_url,
+        idp_base_url,
+        client_url,
+    };
+
+    let static_dir = if Path::new("static").exists() {
+        "static"
+    } else {
+        "client_app/static"
     };
 
     let app = Router::new()
         .route("/login", get(handlers::login))
         .route("/callback", get(handlers::callback))
+        .route("/api/session", get(handlers::get_session))
         .route("/api/userinfo", get(handlers::get_userinfo))
         .route("/api/verify", get(handlers::verify_token))
         .route("/api/refresh", post(handlers::refresh))
         .route("/api/logout", post(handlers::logout))
-        .fallback_service(ServeDir::new("static"))
+        .fallback_service(ServeDir::new(static_dir))
         .layer(session_layer)
         .with_state(state);
 

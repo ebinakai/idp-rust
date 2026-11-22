@@ -1,168 +1,115 @@
-document.addEventListener("DOMContentLoaded", () => {
-  document.querySelector("#login-form")
-    .addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const errorMsg = document.querySelector("#error-message");
-      errorMsg.textContent = "";
+document.addEventListener("DOMContentLoaded", async () => {
+  const loginSection = document.querySelector("#login-section");
+  const resultSection = document.querySelector("#result-section");
+  const tokenDisplay = document.querySelector("#token-display");
+  const idTokenDisplay = document.querySelector("#id-token-display");
+  const userinfoDisplay = document.querySelector("#userinfo-display");
+  const verifyDisplay = document.querySelector("#verify-local-display");
+  const refreshDisplay = document.querySelector("#refresh-token-display");
 
-      const username = document.querySelector("#username").value;
-      const password = document.querySelector("#password").value;
-      
-      try {
-        const response = await fetch("/api/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
-        });
+  function showSession(data) {
+    loginSection.style.display = "none";
+    resultSection.style.display = "block";
+    tokenDisplay.value = data.access_token || "";
+    if (data.id_token) {
+      const decoded = parseJwt(data.id_token);
+      idTokenDisplay.textContent = JSON.stringify(decoded, null, 2);
+    } else {
+      idTokenDisplay.textContent = "(none)";
+    }
+  }
 
-        if (!response.ok) throw new Error("ログインに失敗しました");
+  function showLoggedOut() {
+    loginSection.style.display = "block";
+    resultSection.style.display = "none";
+    tokenDisplay.value = "";
+    idTokenDisplay.textContent = "";
+    userinfoDisplay.textContent = "";
+    verifyDisplay.textContent = "";
+    refreshDisplay.textContent = "";
+  }
 
-        const data = await response.json();
-        localStorage.setItem("access_token", data.access_token);
-        if (data.id_token) localStorage.setItem("id_token", data.id_token);
-        if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
-        showToken();
-      } catch (err) {
-        errorMsg.textContent = err.message;
-      }
-    });
-  
-  document.querySelector("#get-userinfo-button").addEventListener("click", async () => {
-    const token = localStorage.getItem("access_token");
-    if (!token) return;
-    
+  function parseJwt(token) {
     try {
-      const response = await fetch("/api/userinfo", {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error("ユーザー情報の取得に失敗しました");
-      
-      const data = await response.json();
-      const display = document.querySelector("#userinfo-display");
-      display.style.display = "block";
-      display.textContent = JSON.stringify(data, null, 2);
+      const base64Url = token.split(".")[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, "0")}`)
+          .join("")
+      );
+      return JSON.parse(jsonPayload);
+    } catch (e) {
+      console.error("JWTのデコードに失敗しました", e);
+      return null;
+    }
+  }
+
+  document.querySelector("#get-userinfo-button").addEventListener("click", async () => {
+    try {
+      const response = await fetch("/api/userinfo", { method: "GET" });
+      const text = await response.text();
+      userinfoDisplay.style.display = "block";
+      userinfoDisplay.textContent = response.ok
+        ? JSON.stringify(JSON.parse(text), null, 2)
+        : `エラー (${response.status})\n${text}`;
     } catch (err) {
       console.error(err.message);
     }
-    
   });
-  
+
   document.querySelector("#verify-local-button").addEventListener("click", async () => {
-    const token = localStorage.getItem("access_token");
-    if (!token) return;
-    
     try {
-      const response = await fetch("/api/verify", {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
-      
-      const data = await response.json();
-      const display = document.querySelector("#verify-local-display");
-      display.style.display = "block";
-      display.textContent = JSON.stringify(data, null, 2);
+      const response = await fetch("/api/verify", { method: "GET" });
+      const text = await response.text();
+      verifyDisplay.style.display = "block";
+      verifyDisplay.textContent = response.ok
+        ? JSON.stringify(JSON.parse(text), null, 2)
+        : `エラー (${response.status})\n${text}`;
     } catch (err) {
       console.error(err.message);
     }
   });
 
   document.querySelector("#refresh-button").addEventListener("click", async () => {
-    const refreshToken = localStorage.getItem("refresh_token");
-    if (!refreshToken) return;
-    console.debug(refreshToken);
-    
     try {
-      const response = await fetch("/api/refresh", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ refresh_token: refreshToken })
-      });
-      
-      const data = await response.json();
-      const display = document.querySelector("#refresh-token-display");
-      display.style.display = "block";
-      
+      const response = await fetch("/api/refresh", { method: "POST" });
+      const text = await response.text();
+      refreshDisplay.style.display = "block";
+
       if (response.ok) {
-        localStorage.setItem("access_token", data.access_token);
-        if (data.refresh_token) {
-          localStorage.setItem("refresh_token", data.refresh_token);
-        }
-        display.textContent = JSON.stringify(data, null, 2);
+        const data = JSON.parse(text);
+        tokenDisplay.value = data.access_token || "";
+        refreshDisplay.textContent = JSON.stringify(data, null, 2);
       } else {
-        display.textContent = `エラー\n${response.status}\n${JSON.stringify(data, null, 2)}`;
+        refreshDisplay.textContent = `エラー (${response.status})\n${text}`;
       }
     } catch (err) {
       console.error(err.message);
     }
   });
-  
+
   document.querySelector("#logout-button").addEventListener("click", async () => {
-    const refreshToken = localStorage.getItem("refresh_token");
-    
-    if (refreshToken) {
-      try {
-        await fetch("/api/logout", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({ refresh_token: refreshToken })
-        });
-      } catch (err) {
-        console.error("バックエンドのログアウト処理でエラー:", err);
-      }
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } catch (err) {
+      console.error("バックエンドのログアウト処理でエラー:", err);
     }
-    
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    document.querySelector("#login-section").style.display = "block";
-    document.querySelector("#result-section").style.display = "none";
-    document.querySelector("#login-form").reset();
-    
-    document.querySelector("#token-display").value = "";
-    document.querySelector("#id-token-display").textContent = "";
-    document.querySelector("#userinfo-display").textContent = "";
-    document.querySelector("#verify-local-display").textContent = "";
-    document.querySelector("#refresh-token-display").textContent = "";
+    showLoggedOut();
   });
 
-  function showToken() {
-    document.querySelector("#login-section").style.display = "none";
-    document.querySelector("#result-section").style.display = "block";
-    if (localStorage.getItem("id_token")) {
-      const decodedIdToken = parseJwt(localStorage.getItem("id_token"));
-      document.querySelector("#id-token-display").textContent = JSON.stringify(decodedIdToken, null, 2);
-    }
-    document.querySelector("#token-display").value = localStorage.getItem("access_token");
-  }
-  
-  function parseJwt(token) {
-      try {
-          // トークンをピリオドで分割し、ペイロード部分（[1]）を取得
-          const base64Url = token.split('.')[1];
-          // Base64Url形式を標準のBase64形式に変換
-          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-          // デコード処理（マルチバイト文字対応）
-          const jsonPayload = decodeURIComponent(atob(base64).split('').map((c) =>
-            `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`
-          ).join(''));
-  
-          return JSON.parse(jsonPayload);
-      } catch (e) {
-          console.error("JWTのデコードに失敗しました", e);
-          return null;
+  try {
+    const res = await fetch("/api/session");
+    if (res.ok) {
+      const session = await res.json();
+      if (session.logged_in) {
+        showSession(session);
+        return;
       }
+    }
+  } catch (err) {
+    console.error("セッション取得エラー:", err);
   }
-
-  if (localStorage.getItem("access_token")) {
-    showToken();
-  } else {
-    console.debug("No access token found in localStorage");
-  }
+  showLoggedOut();
 });

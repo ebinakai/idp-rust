@@ -1,67 +1,45 @@
 # Rust IdP Project
 
----
+Identity Provider (IdP) の学習および LAN 内での検証利用を目的とした、シンプルな OAuth 2.0 / OpenID Connect (OIDC) 実装です。
+コードの把握しやすさと OAuth 2.0 / OIDC 規格との互換性を重視し、役割ごとのクレート分割で構築しています。
 
-## 概要
+## ワークスペース構成
 
-本プロジェクトは、Identity Provider (IdP) の複雑な認証フローやシステム要件のドメイン知識の学習及び、Rustによる実装を行うプロジェクトである。
-巨大なシステムを一括で構築するのではなく、構成要素を極小の独立したモジュールとして一つずつ作成し、最終的に統合する「ボトムアップ開発」を採用している。
+* **`crypto`**: Argon2id によるパスワード・クライアントシークレットのハッシュ化・検証、PKCE (S256) チャレンジ生成。
+* **`jwt_core`**: RS256 によるアクセストークン・IDトークン署名/検証と JWKS 生成。
+* **`db_client`**: MySQL + SQLx (ランタイムクエリ) によるユーザー、クライアント、同意、リフレッシュトークンの永続化。
+* **`oauth_flow`**: 認可コード・PKCE・リフレッシュトークンのデータモデルと検証ロジック。
+* **`server`**: Axum ベースの IdP サーバー（Port 3000）。
+* **`client_app`**: セッションベースの BFF 検証用クライアントアプリ（Port 4000）。
 
----
+## 実装済みエンドポイント
 
-## 完了済みのモジュールとフェーズ（基礎構築）
+### IdP (`server`)
 
-本プロジェクトのコアとなる認証・認可の基盤部分はすでに実装が完了している。それぞれの役割は以下の通りである。
+* `GET /.well-known/openid-configuration` — OIDC Discovery メタデータ
+* `GET /.well-known/jwks.json` — RS256 公開鍵 (JWKS)
+* `POST /register` — ユーザー登録 (`JSON`)
+* `GET /authorize` — 認可エンドポイント (`response_type=code`, PKCE, `scope`, `state`, `nonce`)
+* `POST /login`, `POST /consent` — ログイン・同意画面（セッション管理）
+* `POST /token` — トークンエンドポイント (`application/x-www-form-urlencoded`, `client_secret_basic` / `client_secret_post`, `authorization_code` / `refresh_token`)
+* `POST /revoke` — トークン失効 (`RFC 7009`, クライアント認証付き)
+* `GET /userinfo` — UserInfo エンドポイント (`Bearer` JWT 検証、標準 `sub` クレーム返却)
+* `GET, POST /api/admin/clients` — OAuth クライアント一覧取得・登録
 
-### 1. コアモジュール群（独立した機能部品）
-システムを構成する基礎として、役割ごとにクレート（モジュール）を分割して構築している。
+### 検証用クライアント (`client_app`)
 
-* **`crypto`**: Argon2アルゴリズムを用いた強固なパスワードハッシュ化処理。
-* **`jwt_core`**: 非対称暗号（RS256）によるJWTの署名生成と、公開鍵を外部へ安全に提供するためのJWKSエンドポイント機能。
-* **`db_client`**: MySQLへの非同期接続と、データベース操作（CRUD）の抽象化。
-* **`oauth_flow`**: OAuth 2.0の認可コードフローにおける、メモリ安全な状態管理およびライフサイクル管理。
+* `GET /login` / `GET /callback` — PKCE + `state` + `nonce` 付き認可コードフロー（トークンはサーバー側セッションに保持）
+* `GET /api/session`, `GET /api/userinfo`, `GET /api/verify`, `POST /api/refresh`, `POST /api/logout`
 
-### 2. サーバー統合
-上記のモジュール群を統合し、IdP（Identity Provider）サーバーとしての基本機能を実装している。
+## 今後の予定（LAN 用途向け）
 
-* **トークンの発行**: OAuth 2.0仕様に基づく「アクセストークン」に加え、OpenID Connect (OIDC) 仕様に準拠したユーザー識別用の「IDトークン」を発行する機能。
-* **自己完結型のトークン検証**: IdPが提供するJWKSを利用し、クライアントアプリ側単独でトークンの正当性を検証できる仕組みの構築。
-* **セッション管理**: 使用済みのトークンを無効化し、新しいトークンを都度再発行する「リフレッシュトークン・ローテーション」の実装。
-* **API保護**: Axumフレームワークのミドルウェア機能を活用した「認証ガード」によるエンドポイントの保護と、環境変数を用いたセキュアなシステム設定の管理。
+* 管理画面 UI (`server/templates/admin/index.html`) と管理 API の認証保護
+* `server` / `client_app` のエンドポイント統合テストの拡充
+* 外部 OIDC クライアントとの相互接続検証
 
----
+## 開発環境のセットアップ
 
-## 今後の開発ワークフロー（本番運用・セキュリティ強化）
-
-ここからは、ローカルでのAPIプロトタイプから「実運用可能な堅牢なIdP」へと昇華させるためのフェーズである。
-
-### Phase 5: クライアント管理とネットワーク境界（IdP側）
-IdPが複数のアプリケーションを安全に管理し、異なるドメインからの通信を許可する基盤を作る。
-* **クライアントアプリ登録機能 (DB拡張)**: 動的な `client_id` と `client_secret` の発行、および許可された `redirect_uri` （コールバック先）のデータベース管理（オープンリダイレクト脆弱性の防止）。
-* **CORS (Cross-Origin Resource Sharing) の導入**: `tower-http` を用いて、別ドメイン（例: フロントエンドや他サーバー）からのAPIリクエストを安全に許可する設定。
-
-### Phase 6: ユーザー認可インターフェース（IdP側）
-エンドユーザーに対する透明性の確保と、正しいOAuth 2.0フローのUI実装。
-* **認証画面 (Login / Signup UI)**: APIの直接コールではなく、ユーザーがブラウザで認証情報を入力するセキュアなフォーム画面の提供。
-* **認可同意画面 (Consent Screen)**: ログイン直後に「アプリAがあなたの情報にアクセスしようとしているが許可するか」を提示し、ユーザーの明示的な同意を得る画面の実装。
-
-### Phase 7: フロントエンドの堅牢化（クライアント側）
-クライアントアプリ側のセキュリティホールを塞ぎ、最新のベストプラクティスに準拠する。
-* **セキュアCookieへの移行**: トークンを `localStorage`（XSS攻撃に脆弱）から、`HttpOnly` および `Secure` 属性を付与したCookieでの管理へ移行。
-* **PKCE (Proof Key for Code Exchange) の実装**: 認可コード横取り攻撃を防ぐため、ログイン要求時とコード交換時に動的なハッシュ（`code_verifier` / `code_challenge`）を検証する仕組みの導入。
-
-### Phase 8: 高度な認証機能と拡張
-* **`webauthn` モジュール**: Passkey認証（生体認証デバイスなど）の実装。
-* **再利用検知 (Replay Detection)**: リフレッシュトークンファミリーの強制無効化による高度なセキュリティ防御。
-
----
-
-## セキュリティ・鍵管理
-
-本システムはRS256署名を採用している。開発用鍵の生成と取り扱いは以下の通りとする。
-
-1. **秘密鍵の秘匿**: `private_key.pem` は絶対にリポジトリに含めない（`.gitignore` で除外）。
-2. **公開鍵の配布**: 公開鍵は JWKS エンドポイントを通じて動的に配布され、クライアントはこれを自動取得して検証を行う。
+### 1. 鍵の生成
 
 ```bash
 mkdir -p keys
@@ -69,18 +47,20 @@ openssl genpkey -algorithm RSA -out keys/private_key.pem -pkeyopt rsa_keygen_bit
 openssl rsa -pubout -in keys/private_key.pem -out keys/public_key.pem
 ```
 
----
-
-## 開発環境のセットアップ
+### 2. DB 起動とマイグレーション
 
 ```bash
-# docker でDBを起動
+cp example.env .env
 docker compose up -d
 sqlx migrate run
+```
 
-# IdPサーバーの起動 (Port 3000)
-cd server && cargo run
+### 3. サーバー起動
 
-# クライアントアプリの起動 (Port 4000)
-cd client_app && cargo run
+```bash
+# IdP サーバー (Port 3000)
+cargo run -p server
+
+# クライアントアプリ (Port 4000)
+cargo run -p client_app
 ```

@@ -1,3 +1,4 @@
+mod error;
 mod handlers;
 mod middleware;
 mod models;
@@ -9,23 +10,42 @@ use axum::{
 use db_client::DbClient;
 use dotenvy::dotenv;
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{env, fs};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tower_sessions::{MemoryStore, SessionManagerLayer};
 
+fn read_key_file(env_name: &str, candidates: &[&str]) -> String {
+    if let Ok(path) = env::var(env_name) {
+        return fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{} ({}) の読み込みに失敗しました: {}", env_name, path, e));
+    }
+    for path in candidates {
+        if Path::new(path).exists() {
+            return fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("{} の読み込みに失敗しました: {}", path, e));
+        }
+    }
+    panic!("鍵ファイルが見つかりません ({:?})", candidates);
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URLが設定されていません");
-    let private_key =
-        fs::read_to_string("../keys/private_key.pem").expect("private_key.pem が見つかりません");
-    let public_key =
-        fs::read_to_string("../keys/public_key.pem").expect("public_key.pem が見つかりません");
+    let private_key = read_key_file(
+        "PRIVATE_KEY_PATH",
+        &["keys/private_key.pem", "../keys/private_key.pem"],
+    );
+    let public_key = read_key_file(
+        "PUBLIC_KEY_PATH",
+        &["keys/public_key.pem", "../keys/public_key.pem"],
+    );
     let issuer = env::var("ISSUER").expect("ISSUERが設定されていません");
     let refresh_token_ttl_days = env::var("REFRESH_TOKEN_TTL_DAYS")
-        .unwrap_or("30".to_string())
+        .unwrap_or_else(|_| "30".to_string())
         .parse::<i64>()
         .unwrap_or(30);
 
@@ -53,6 +73,12 @@ async fn main() {
             middleware::auth_guard,
         ));
 
+    let static_dir = if Path::new("static").exists() {
+        "static"
+    } else {
+        "server/static"
+    };
+
     let app = Router::new()
         .route("/", get(handlers::health_check))
         .route(
@@ -66,7 +92,11 @@ async fn main() {
         .route("/consent", post(handlers::consent))
         .route("/token", post(handlers::exchange_token))
         .route("/revoke", post(handlers::revoke_token))
-        .nest_service("/static", ServeDir::new("static"))
+        .route(
+            "/api/admin/clients",
+            get(handlers::list_clients).post(handlers::create_client),
+        )
+        .nest_service("/static", ServeDir::new(static_dir))
         .merge(protected_routes)
         .layer(session_layer)
         .with_state(state);

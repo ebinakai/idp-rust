@@ -1,4 +1,3 @@
-use askama::Template;
 use db_client::DbClient;
 use oauth_flow::AuthCode;
 use serde::{Deserialize, Serialize};
@@ -24,16 +23,29 @@ pub struct RegisterReq {
 
 #[derive(Deserialize)]
 pub struct AuthorizeReq {
+    pub response_type: String,
     pub client_id: String,
     pub redirect_uri: String,
-    pub code_challenge: String,
-    pub code_challenge_method: String,
+    pub scope: Option<String>,
+    pub state: Option<String>,
+    pub nonce: Option<String>,
+    pub code_challenge: Option<String>,
+    pub code_challenge_method: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
-pub struct ConsentReq {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingAuth {
     pub client_id: String,
     pub redirect_uri: String,
+    pub scope: Option<String>,
+    pub state: Option<String>,
+    pub nonce: Option<String>,
+    pub code_challenge: Option<String>,
+    pub code_challenge_method: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ConsentReq {
     pub action: String, // "allow" または "deny" が入る
 }
 
@@ -41,17 +53,14 @@ pub struct ConsentReq {
 pub struct LoginReq {
     pub username: String,
     pub password: String,
-    pub client_id: String,
-    pub redirect_uri: String,
 }
 
 #[derive(Deserialize)]
 pub struct TokenReq {
     pub grant_type: String,
     pub code: Option<String>,
-    pub client_id: String,
+    pub client_id: Option<String>,
     pub client_secret: Option<String>,
-    pub scope: Option<String>,
     pub refresh_token: Option<String>,
     pub redirect_uri: Option<String>,
     pub code_verifier: Option<String>,
@@ -61,28 +70,20 @@ pub struct TokenReq {
 pub struct TokenRes {
     pub access_token: String,
     pub token_type: String,
+    pub expires_in: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct RevokeReq {
     pub token: String,
-}
-
-#[derive(Template)]
-#[template(path = "login.html")]
-pub struct LoginTemplate {
-    pub client_id: String,
-    pub client_name: String,
-    pub redirect_uri: String,
-}
-
-#[derive(Template)]
-#[template(path = "consent.html")]
-pub struct ConsentTemplate {
-    pub client_name: String,
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub username: String,
+    #[allow(dead_code)]
+    pub token_type_hint: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
 }

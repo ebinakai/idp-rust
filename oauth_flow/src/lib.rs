@@ -10,6 +10,9 @@ pub struct AuthCode {
     pub code: String,
     pub user_id: String,
     pub client_id: String,
+    pub redirect_uri: String,
+    pub scope: Option<String>,
+    pub nonce: Option<String>,
     pub expires_at: u64,
     pub challenge: Option<String>,
     pub challenge_method: Option<String>,
@@ -20,10 +23,11 @@ pub struct TokenRequest {
     pub grant_type: String,
     pub code: String,
     pub client_id: String,
+    pub redirect_uri: String,
 }
 
 impl AuthCode {
-    pub fn new(user_id: &str, client_id: &str) -> Self {
+    pub fn new(user_id: &str, client_id: &str, redirect_uri: &str) -> Self {
         let mut bytes = [0u8; 32];
         rand::rng().fill(&mut bytes);
         let code_string = URL_SAFE_NO_PAD.encode(&bytes);
@@ -38,6 +42,9 @@ impl AuthCode {
             code: code_string,
             user_id: user_id.to_string(),
             client_id: client_id.to_string(),
+            redirect_uri: redirect_uri.to_string(),
+            scope: None,
+            nonce: None,
             expires_at,
             challenge: None,
             challenge_method: None,
@@ -53,14 +60,16 @@ impl AuthCode {
         self.expires_at > now
     }
 
-    pub fn verify_pkce(&self, verifier: &str) -> bool {
-        match self.challenge_method.as_deref() {
-            Some(method) if method.eq_ignore_ascii_case("S256") => {
-                self.challenge == Some(crypto::generate_pkce_challenge(verifier))
-            }
-            Some(method) if method.eq_ignore_ascii_case("plain") => {
-                self.challenge == Some(verifier.to_string())
-            }
+    pub fn verify_pkce(&self, verifier: Option<&str>) -> bool {
+        match (&self.challenge, verifier) {
+            (None, None) => true,
+            (Some(challenge), Some(v)) => match self.challenge_method.as_deref() {
+                Some(method) if method.eq_ignore_ascii_case("S256") => {
+                    crypto::generate_pkce_challenge(v) == *challenge
+                }
+                Some(method) if method.eq_ignore_ascii_case("plain") => v == challenge,
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -76,6 +85,10 @@ impl AuthCode {
 
         if request.client_id != self.client_id {
             return Err("提供されたクライアントIDが一致しません");
+        }
+
+        if request.redirect_uri != self.redirect_uri {
+            return Err("提供されたredirect_uriが一致しません");
         }
 
         if !self.is_valid() {

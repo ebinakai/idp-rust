@@ -19,7 +19,22 @@ pub struct Jwk {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
+    pub iss: String,
     pub sub: String,
+    pub aud: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    pub iat: usize,
+    pub exp: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IdTokenClaims {
+    pub iss: String,
+    pub sub: String,
+    pub aud: String,
+    pub nonce: Option<String>,
+    pub iat: usize,
     pub exp: usize,
 }
 
@@ -36,48 +51,39 @@ pub struct AppState {
 #[derive(Deserialize)]
 pub struct CallbackQuery {
     pub code: Option<String>,
+    pub state: Option<String>,
     pub error: Option<String>,
+    pub error_description: Option<String>,
 }
 
 #[derive(Serialize)]
 pub struct IdpTokenReq {
     pub grant_type: String,
     pub code: String,
-    pub client_id: String,
-    pub client_secret: String,
-    pub scope: Option<String>,
-    pub code_verifier: String,
     pub redirect_uri: String,
+    pub code_verifier: String,
 }
 
 #[derive(Deserialize)]
 pub struct IdpTokenRes {
     pub access_token: String,
+    pub token_type: String,
+    pub expires_in: Option<i64>,
+    #[allow(dead_code)]
+    pub scope: Option<String>,
     pub id_token: Option<String>,
     pub refresh_token: Option<String>,
-    pub _token_type: Option<String>,
 }
 
-#[derive(Serialize)]
-pub struct ClientRes {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionTokens {
     pub access_token: String,
     pub id_token: Option<String>,
     pub refresh_token: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
-pub struct RefreshReq {
-    pub refresh_token: String,
-}
-
 #[derive(Serialize)]
 pub struct RefreshTokenReq {
     pub grant_type: String,
-    pub refresh_token: String,
-    pub client_id: String,
-}
-
-#[derive(serde::Deserialize)]
-pub struct LogoutReq {
     pub refresh_token: String,
 }
