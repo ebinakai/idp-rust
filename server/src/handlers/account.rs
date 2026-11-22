@@ -19,6 +19,7 @@ use webauthn_rs::prelude::{
 pub struct UserSummary {
     pub id: String,
     pub username: String,
+    pub is_admin: bool,
 }
 
 #[derive(Serialize)]
@@ -30,6 +31,7 @@ pub struct PasskeySummary {
 
 #[derive(Serialize)]
 pub struct MeRes {
+    pub needs_setup: bool,
     pub logged_in: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<UserSummary>,
@@ -67,6 +69,30 @@ async fn require_account_user_id(session: &Session) -> Result<String, AppError> 
         .ok_or_else(|| AppError::unauthorized("ログインが必要です"))
 }
 
+pub async fn require_admin(
+    state: &AppState,
+    session: &Session,
+) -> Result<db_client::User, AppError> {
+    let user_id = session
+        .get::<String>("account_user_id")
+        .await
+        .map_err(AppError::internal)?
+        .ok_or_else(|| AppError::unauthorized("管理者ログインが必要です"))?;
+
+    let user = state
+        .db
+        .get_user(&user_id)
+        .await
+        .map_err(AppError::internal)?
+        .ok_or_else(|| AppError::unauthorized("ログインが必要です"))?;
+
+    if !user.is_admin {
+        return Err(AppError::forbidden("管理者権限が必要です"));
+    }
+
+    Ok(user)
+}
+
 pub async fn get_me(
     State(state): State<AppState>,
     session: Session,
@@ -76,7 +102,9 @@ pub async fn get_me(
         .await
         .map_err(AppError::internal)?
     else {
+        let needs_setup = state.db.count_users().await.map_err(AppError::internal)? == 0;
         return Ok(Json(MeRes {
+            needs_setup,
             logged_in: false,
             user: None,
             passkeys: vec![],
@@ -91,7 +119,9 @@ pub async fn get_me(
         .map_err(AppError::internal)?
     else {
         let _ = session.remove::<String>("account_user_id").await;
+        let needs_setup = state.db.count_users().await.map_err(AppError::internal)? == 0;
         return Ok(Json(MeRes {
+            needs_setup,
             logged_in: false,
             user: None,
             passkeys: vec![],
@@ -119,10 +149,12 @@ pub async fn get_me(
         .map_err(AppError::internal)?;
 
     Ok(Json(MeRes {
+        needs_setup: false,
         logged_in: true,
         user: Some(UserSummary {
             id: user.id,
             username: user.username,
+            is_admin: user.is_admin,
         }),
         passkeys,
         consents,

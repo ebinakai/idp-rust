@@ -24,7 +24,7 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
 function ensureWebAuthnSupported() {
   if (!window.PublicKeyCredential || !navigator.credentials) {
     throw new Error(
-      "このブラウザまたは接続環境ではパスキー（WebAuthn）を利用できません。http://localhost または https:// でアクセスしてください。"
+      "このブラウザまたは接続環境ではパスキー（WebAuthn）を利用できません。http://localhost または https:// でアクセスしてください。",
     );
   }
 }
@@ -36,7 +36,10 @@ interface RawDescriptor {
 }
 
 export interface CreationChallengeJson {
-  publicKey: Omit<PublicKeyCredentialCreationOptions, "challenge" | "user" | "excludeCredentials"> & {
+  publicKey: Omit<
+    PublicKeyCredentialCreationOptions,
+    "challenge" | "user" | "excludeCredentials"
+  > & {
     challenge: string;
     user: Omit<PublicKeyCredentialUserEntity, "id"> & { id: string };
     excludeCredentials?: RawDescriptor[];

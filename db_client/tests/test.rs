@@ -48,20 +48,35 @@ mod tests {
             id: id.clone(),
             username: username.clone(),
             password_hash: password_hash.clone(),
+            is_admin: false,
             created_at: None,
             updated_at: None,
         };
+
+        assert_eq!(client.count_users().await.unwrap(), 0);
 
         client
             .create_user(&user)
             .await
             .expect("ユーザーの作成に失敗しました");
 
+        assert_eq!(client.count_users().await.unwrap(), 1);
+        assert!(
+            client
+                .set_user_admin_by_name(&username, true)
+                .await
+                .unwrap()
+        );
+
         let fetched_user = client
             .get_user(&id)
             .await
             .expect("Selectクエリの実行に失敗しました");
         assert!(fetched_user.is_some(), "ユーザーが見つかりませんでした");
+        assert!(
+            fetched_user.unwrap().is_admin,
+            "管理者フラグが更新されていません"
+        );
 
         let fetched_user = client
             .get_user_by_name(&username)
@@ -107,6 +122,7 @@ mod tests {
             id: Uuid::new_v4().to_string(),
             username: "".to_string(),
             password_hash: "".to_string(),
+            is_admin: false,
             created_at: None,
             updated_at: None,
         };
@@ -146,6 +162,7 @@ mod tests {
             id: user_id.clone(),
             username: username.clone(),
             password_hash: password_hash.clone(),
+            is_admin: false,
             created_at: None,
             updated_at: None,
         };
@@ -210,6 +227,7 @@ mod tests {
             id: user_id.clone(),
             username: format!("passkey_user_{}", user_id),
             password_hash: "hash".to_string(),
+            is_admin: false,
             created_at: None,
             updated_at: None,
         };

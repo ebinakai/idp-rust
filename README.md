@@ -63,6 +63,8 @@ docker compose up -d --build
 * `FRONTEND_DIR`: IdP フロントエンド (React ビルド済み `dist`) ディレクトリ
 * `STATIC_DIR`: `client_app` の静的ファイルディレクトリ
 * `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN`: パスキー (WebAuthn) の RP 設定（未設定時は `ISSUER` から自動導出。WebAuthn は `http://localhost` または `https://` で動作します）
+* `ADMIN_USERNAME`: 起動時に管理者権限 (`is_admin=true`) を付与する既存ユーザー名
+* `ALLOW_SELF_REGISTER`: 自己ユーザー登録を許可するか（デフォルト `false`。ユーザー数が 0 人の初回のみ管理者として登録可能）
 
 ### 2B. ローカル開発（ホットリロード）
 
@@ -83,5 +85,6 @@ cd server/frontend && npm run dev
 
 ### 3. 動作確認
 
-1. ブラウザで `http://localhost:3000` を開き、IdP 管理ポータルからテスト用ユーザー（またはクライアント）を登録します（`curl` での `POST /register` も利用可能）。
-2. ブラウザで `http://localhost:4000` を開き、ログイン・同意・UserInfo 取得・JWKS ローカル検証・リフレッシュ・ログアウトを確認します。
+1. ブラウザで `http://localhost:3000` を開き、初回セットアップで管理者ユーザーを作成（または既存ユーザーを `ADMIN_USERNAME` で昇格して `/account` からログイン）します。
+2. 必要に応じて `/account` からパスキー（Touch ID 等）を登録し、管理ポータルでクライアントや追加ユーザーを管理できます。
+3. ブラウザで `http://localhost:4000` を開き、ログイン・同意・UserInfo 取得・JWKS ローカル検証・リフレッシュ・ログアウトを確認します。

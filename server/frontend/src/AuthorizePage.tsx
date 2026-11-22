@@ -1,12 +1,12 @@
 import { type FormEvent, useEffect, useState } from "react";
 import {
+  type AuthActionRes,
+  type AuthContextRes,
   fetchAuthContext,
   finishPasskeyAuth,
   startPasskeyAuth,
   submitConsent,
   submitLogin,
-  type AuthActionRes,
-  type AuthContextRes,
 } from "./api";
 import { getPasskeyAssertion } from "./webauthn";
 

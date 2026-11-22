@@ -6,10 +6,10 @@ import {
   fetchMe,
   finishPasskeyAuth,
   finishPasskeyRegister,
+  type MeRes,
   revokeConsent,
   startPasskeyAuth,
   startPasskeyRegister,
-  type MeRes,
 } from "./api";
 import { createPasskeyCredential, getPasskeyAssertion } from "./webauthn";
 
@@ -122,7 +122,11 @@ export function AccountPage() {
     try {
       await accountLogout();
       await reloadMe();
-      setNotice({ kind: "info", title: "ログアウトしました", body: "マイページからサインアウトしました。" });
+      setNotice({
+        kind: "info",
+        title: "ログアウトしました",
+        body: "マイページからサインアウトしました。",
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "ログアウトに失敗しました";
       setNotice({ kind: "error", title: "ログアウトエラー", body: msg });
@@ -196,7 +200,8 @@ export function AccountPage() {
     }
   }
 
-  const loggedIn = Boolean(me?.logged_in && me.user);
+  const currentUser = me?.logged_in ? me.user : undefined;
+  const loggedIn = Boolean(currentUser);
 
   return (
     <div className="dads-page">
@@ -204,12 +209,14 @@ export function AccountPage() {
         <div className="dads-header__inner">
           <h1 className="dads-header__title">Rust IdP マイページ</h1>
           <div className="dads-header__actions">
-            <a href="/" className="dads-btn dads-btn--secondary dads-btn--sm">
-              管理ポータル
-            </a>
             <span className={`dads-chip ${loggedIn ? "dads-chip--success" : ""}`}>
               {loading ? "確認中" : loggedIn ? "ログイン中" : "未ログイン"}
             </span>
+            {(me?.user?.is_admin || me?.needs_setup) && (
+              <a href="/" className="dads-btn dads-btn--secondary dads-btn--sm">
+                管理ポータル
+              </a>
+            )}
             {loggedIn && (
               <button
                 type="button"
@@ -226,7 +233,11 @@ export function AccountPage() {
 
       <main className="dads-main">
         {notice && (
-          <div className={`dads-notice dads-notice--${notice.kind}`} role="status" aria-live="polite">
+          <div
+            className={`dads-notice dads-notice--${notice.kind}`}
+            role="status"
+            aria-live="polite"
+          >
             <p className="dads-notice__title">{notice.title}</p>
             <p className="dads-notice__body">{notice.body}</p>
           </div>
@@ -238,7 +249,7 @@ export function AccountPage() {
               <p className="dads-lead">アカウント情報を読み込んでいます...</p>
             </div>
           </section>
-        ) : !loggedIn ? (
+        ) : !currentUser || !me ? (
           <>
             <section className="dads-card">
               <div className="dads-card__main">
@@ -304,7 +315,8 @@ export function AccountPage() {
               <p className="dads-notice__title">パスキー（WebAuthn）の動作条件</p>
               <p className="dads-notice__body">
                 ブラウザ仕様により、パスキーは <code>http://localhost</code> または{" "}
-                <code>https://</code> 環境でのみ動作します。初めて登録する場合はパスワードでログインしてください。
+                <code>https://</code>{" "}
+                環境でのみ動作します。初めて登録する場合はパスワードでログインしてください。
               </p>
             </aside>
           </>
@@ -316,9 +328,11 @@ export function AccountPage() {
                 <h2 className="dads-heading-2">アカウント情報</h2>
                 <dl className="dads-dl">
                   <dt>ユーザー名</dt>
-                  <dd>{me!.user!.username}</dd>
+                  <dd>{currentUser.username}</dd>
+                  <dt>権限</dt>
+                  <dd>{currentUser.is_admin ? "管理者" : "一般ユーザー"}</dd>
                   <dt>ユーザー ID (sub)</dt>
-                  <dd className="dads-mono">{me!.user!.id}</dd>
+                  <dd className="dads-mono">{currentUser.id}</dd>
                 </dl>
               </div>
             </section>
@@ -328,7 +342,8 @@ export function AccountPage() {
               <div className="dads-card__main">
                 <h2 className="dads-heading-2">パスキー管理</h2>
                 <p className="dads-lead">
-                  Touch ID・Windows Hello・ハードウェアセキュリティキーなどを登録して、パスワードなしでログインできます。
+                  Touch ID・Windows
+                  Hello・ハードウェアセキュリティキーなどを登録して、パスワードなしでログインできます。
                 </p>
 
                 <form className="dads-form" onSubmit={handleRegisterPasskey}>
@@ -360,12 +375,12 @@ export function AccountPage() {
               </div>
 
               <div className="dads-card__sub">
-                <h3 className="dads-heading-3">登録済みパスキー ({me!.passkeys.length})</h3>
-                {me!.passkeys.length === 0 ? (
+                <h3 className="dads-heading-3">登録済みパスキー ({me.passkeys.length})</h3>
+                {me.passkeys.length === 0 ? (
                   <p className="dads-subtext">登録済みのパスキーはありません。</p>
                 ) : (
                   <ul className="dads-client-list">
-                    {me!.passkeys.map((pk) => (
+                    {me.passkeys.map((pk) => (
                       <li key={pk.id} className="dads-client-item">
                         <div className="dads-client-item__head">
                           <span className="dads-client-item__name">{pk.label}</span>
@@ -378,7 +393,9 @@ export function AccountPage() {
                             削除
                           </button>
                         </div>
-                        <div className="dads-subtext">登録日時: {formatDateTime(pk.created_at)}</div>
+                        <div className="dads-subtext">
+                          登録日時: {formatDateTime(pk.created_at)}
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -389,15 +406,16 @@ export function AccountPage() {
             {/* Section 3: 連携済みアプリ（同意管理） */}
             <section className="dads-card">
               <div className="dads-card__main">
-                <h2 className="dads-heading-2">連携済みアプリ ({me!.consents.length})</h2>
+                <h2 className="dads-heading-2">連携済みアプリ ({me.consents.length})</h2>
                 <p className="dads-lead">
-                  アクセスを許可した外部 OAuth クライアントです。連携を解除するとリフレッシュトークンも失効します。
+                  アクセスを許可した外部 OAuth
+                  クライアントです。連携を解除するとリフレッシュトークンも失効します。
                 </p>
-                {me!.consents.length === 0 ? (
+                {me.consents.length === 0 ? (
                   <p className="dads-subtext">現在連携しているアプリはありません。</p>
                 ) : (
                   <ul className="dads-client-list">
-                    {me!.consents.map((item) => (
+                    {me.consents.map((item) => (
                       <li key={item.client_id} className="dads-client-item">
                         <div className="dads-client-item__head">
                           <span className="dads-client-item__name">{item.client_name}</span>
@@ -413,7 +431,9 @@ export function AccountPage() {
                         <div className="dads-subtext">
                           client_id: <span className="dads-mono">{item.client_id}</span>
                         </div>
-                        <div className="dads-subtext">許可日時: {formatDateTime(item.created_at)}</div>
+                        <div className="dads-subtext">
+                          許可日時: {formatDateTime(item.created_at)}
+                        </div>
                       </li>
                     ))}
                   </ul>

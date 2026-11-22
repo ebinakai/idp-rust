@@ -50,10 +50,12 @@ export interface UserConsentItem {
 }
 
 export interface MeRes {
+  needs_setup: boolean;
   logged_in: boolean;
   user?: {
     id: string;
     username: string;
+    is_admin: boolean;
   };
   passkeys: PasskeySummary[];
   consents: UserConsentItem[];
@@ -99,11 +101,11 @@ export function createClient(req: CreateClientReq): Promise<OAuthClientItem> {
   });
 }
 
-export function registerUser(username: string, password: string): Promise<void> {
+export function registerUser(username: string, password: string, isAdmin = false): Promise<void> {
   return requestJson<void>("/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, is_admin: isAdmin }),
   });
 }
 
@@ -181,7 +183,7 @@ export function startPasskeyAuth(username: string): Promise<RequestChallengeJson
 
 export function finishPasskeyAuth(
   credential: unknown,
-  mode: "account" | "authorize"
+  mode: "account" | "authorize",
 ): Promise<AuthActionRes | { status: "ok" }> {
   return requestJson<AuthActionRes | { status: "ok" }>("/api/passkey/auth/finish", {
     method: "POST",

@@ -15,6 +15,7 @@ pub struct AppState {
     pub refresh_token_ttl_days: i64,
     pub frontend_dir: String,
     pub webauthn: Arc<webauthn_rs::Webauthn>,
+    pub allow_self_register: bool,
 }
 
 #[derive(Serialize)]
@@ -41,6 +42,8 @@ pub enum AuthActionRes {
 pub struct RegisterReq {
     pub username: String,
     pub password: String,
+    #[serde(default)]
+    pub is_admin: bool,
 }
 
 #[derive(Deserialize)]

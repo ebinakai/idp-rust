@@ -57,6 +57,14 @@ impl AppError {
         }
     }
 
+    pub fn forbidden(description: impl Into<String>) -> Self {
+        Self::OAuth {
+            status: StatusCode::FORBIDDEN,
+            error: "access_denied",
+            description: description.into(),
+        }
+    }
+
     pub fn not_found(description: impl Into<String>) -> Self {
         Self::OAuth {
             status: StatusCode::NOT_FOUND,

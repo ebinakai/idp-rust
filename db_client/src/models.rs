@@ -7,6 +7,7 @@ pub struct User {
     pub id: String,
     pub username: String,
     pub password_hash: String,
+    pub is_admin: bool,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }

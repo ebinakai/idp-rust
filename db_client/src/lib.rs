@@ -109,12 +109,15 @@ impl DbClient {
     }
 
     pub async fn create_user(&self, user: &User) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)")
-            .bind(&user.id)
-            .bind(&user.username)
-            .bind(&user.password_hash)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "INSERT INTO users (id, username, password_hash, is_admin) VALUES (?, ?, ?, ?)",
+        )
+        .bind(&user.id)
+        .bind(&user.username)
+        .bind(&user.password_hash)
+        .bind(user.is_admin)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
@@ -177,7 +180,7 @@ impl DbClient {
 
     pub async fn get_user(&self, user_id: &str) -> Result<Option<User>, sqlx::Error> {
         sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, created_at, updated_at FROM users WHERE id = ?",
+            "SELECT id, username, password_hash, is_admin, created_at, updated_at FROM users WHERE id = ?",
         )
         .bind(user_id)
         .fetch_optional(&self.pool)
@@ -186,11 +189,31 @@ impl DbClient {
 
     pub async fn get_user_by_name(&self, username: &str) -> Result<Option<User>, sqlx::Error> {
         sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, created_at, updated_at FROM users WHERE username = ?",
+            "SELECT id, username, password_hash, is_admin, created_at, updated_at FROM users WHERE username = ?",
         )
         .bind(username)
         .fetch_optional(&self.pool)
         .await
+    }
+
+    pub async fn count_users(&self) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
+            .fetch_one(&self.pool)
+            .await
+    }
+
+    pub async fn set_user_admin_by_name(
+        &self,
+        username: &str,
+        is_admin: bool,
+    ) -> Result<bool, sqlx::Error> {
+        let res = sqlx::query("UPDATE users SET is_admin = ? WHERE username = ?")
+            .bind(is_admin)
+            .bind(username)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(res.rows_affected() > 0)
     }
 
     pub async fn delete_user(&self, user_id: &str) -> Result<(), sqlx::Error> {

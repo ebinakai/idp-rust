@@ -1,4 +1,4 @@
-use crate::{error::AppError, models::*};
+use crate::{error::AppError, handlers::require_admin, models::*};
 use axum::{
     Form, Json,
     extract::{Query, State},
@@ -176,11 +176,24 @@ fn issue_auth_code_url(
 
 pub async fn register_user(
     State(state): State<AppState>,
+    session: tower_sessions::Session,
     Json(payload): Json<RegisterReq>,
 ) -> Result<StatusCode, AppError> {
     if payload.username.trim().is_empty() || payload.password.is_empty() {
         return Err(AppError::invalid_request("username と password が必要です"));
     }
+
+    let user_count = state.db.count_users().await.map_err(AppError::internal)?;
+
+    let (grant_admin, auto_login) = if user_count == 0 {
+        (true, true)
+    } else if state.allow_self_register {
+        let caller_is_admin = require_admin(&state, &session).await.is_ok();
+        (caller_is_admin && payload.is_admin, false)
+    } else {
+        require_admin(&state, &session).await?;
+        (payload.is_admin, false)
+    };
 
     let password = payload.password;
     let password_hash = tokio::task::spawn_blocking(move || crypto::hash_secret(&password))
@@ -190,8 +203,9 @@ pub async fn register_user(
 
     let new_user = User {
         id: Uuid::new_v4().to_string(),
-        username: payload.username,
+        username: payload.username.trim().to_string(),
         password_hash,
+        is_admin: grant_admin,
         created_at: None,
         updated_at: None,
     };
@@ -201,6 +215,14 @@ pub async fn register_user(
         .create_user(&new_user)
         .await
         .map_err(AppError::internal)?;
+
+    if auto_login {
+        session.cycle_id().await.map_err(AppError::internal)?;
+        session
+            .insert("account_user_id", &new_user.id)
+            .await
+            .map_err(AppError::internal)?;
+    }
 
     Ok(StatusCode::CREATED)
 }

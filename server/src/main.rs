@@ -56,6 +56,21 @@ async fn main() {
         .await
         .expect("データベースのマイグレーションに失敗しました");
 
+    if let Ok(admin_name) = env::var("ADMIN_USERNAME") {
+        let admin_name = admin_name.trim();
+        if !admin_name.is_empty() {
+            match db.set_user_admin_by_name(admin_name, true).await {
+                Ok(true) => println!("管理者権限を付与しました: {}", admin_name),
+                Ok(false) => println!("ADMIN_USERNAME が見つかりません: {}", admin_name),
+                Err(e) => eprintln!("ADMIN_USERNAME の更新に失敗しました: {}", e),
+            }
+        }
+    }
+
+    let allow_self_register = env::var("ALLOW_SELF_REGISTER")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1"))
+        .unwrap_or(false);
+
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store).with_secure(false);
 
@@ -94,6 +109,7 @@ async fn main() {
         refresh_token_ttl_days,
         frontend_dir: frontend_dir.clone(),
         webauthn,
+        allow_self_register,
     };
 
     let protected_routes = Router::new()

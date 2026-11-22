@@ -1,13 +1,20 @@
 use crate::{
     error::AppError,
+    handlers::require_admin,
     models::{AppState, ClientRes, CreateClientReq},
 };
 use axum::{Json, extract::State, http::StatusCode};
 use db_client::OAuthClient;
 use rand::distr::{Alphanumeric, SampleString};
+use tower_sessions::Session;
 use uuid::Uuid;
 
-pub async fn list_clients(State(state): State<AppState>) -> Result<Json<Vec<ClientRes>>, AppError> {
+pub async fn list_clients(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<Json<Vec<ClientRes>>, AppError> {
+    require_admin(&state, &session).await?;
+
     let clients = state
         .db
         .list_oauth_clients()
@@ -29,8 +36,11 @@ pub async fn list_clients(State(state): State<AppState>) -> Result<Json<Vec<Clie
 
 pub async fn create_client(
     State(state): State<AppState>,
+    session: Session,
     Json(req): Json<CreateClientReq>,
 ) -> Result<(StatusCode, Json<ClientRes>), AppError> {
+    require_admin(&state, &session).await?;
+
     if req.name.trim().is_empty() {
         return Err(AppError::invalid_request("クライアント名が必要です"));
     }

@@ -44,6 +44,8 @@ services:
       FRONTEND_DIR: /app/frontend
       PRIVATE_KEY_PATH: /app/keys/private_key.pem
       PUBLIC_KEY_PATH: /app/keys/public_key.pem
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ALLOW_SELF_REGISTER: ${ALLOW_SELF_REGISTER:-false}
     ports:
       - "3000:3000"
     volumes:
