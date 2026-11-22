@@ -63,6 +63,11 @@ export async function createPasskeyCredential(ccr: CreationChallengeJson): Promi
       ...pk.user,
       id: base64UrlToUint8Array(pk.user.id),
     },
+    authenticatorSelection: {
+      ...pk.authenticatorSelection,
+      residentKey: "required",
+      requireResidentKey: true,
+    },
     excludeCredentials: pk.excludeCredentials?.map((item) => ({
       ...item,
       id: base64UrlToUint8Array(item.id),
@@ -97,10 +102,13 @@ export async function getPasskeyAssertion(rcr: RequestChallengeJson): Promise<un
   const publicKey: PublicKeyCredentialRequestOptions = {
     ...pk,
     challenge: base64UrlToUint8Array(pk.challenge),
-    allowCredentials: pk.allowCredentials?.map((item) => ({
-      ...item,
-      id: base64UrlToUint8Array(item.id),
-    })),
+    allowCredentials:
+      pk.allowCredentials && pk.allowCredentials.length > 0
+        ? pk.allowCredentials.map((item) => ({
+            ...item,
+            id: base64UrlToUint8Array(item.id),
+          }))
+        : undefined,
   };
 
   const credential = (await navigator.credentials.get({
