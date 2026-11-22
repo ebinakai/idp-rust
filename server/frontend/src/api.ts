@@ -1,3 +1,5 @@
+import type { CreationChallengeJson, RequestChallengeJson } from "./webauthn";
+
 export interface OAuthClientItem {
   id: string;
   name: string;
@@ -34,6 +36,28 @@ export interface AuthContextRes {
 export type AuthActionRes =
   | { status: "redirect"; redirect_uri: string }
   | { status: "consent"; client_name: string; username: string; scopes: string[] };
+
+export interface PasskeySummary {
+  id: string;
+  label: string;
+  created_at?: string | null;
+}
+
+export interface UserConsentItem {
+  client_id: string;
+  client_name: string;
+  created_at?: string | null;
+}
+
+export interface MeRes {
+  logged_in: boolean;
+  user?: {
+    id: string;
+    username: string;
+  };
+  passkeys: PasskeySummary[];
+  consents: UserConsentItem[];
+}
 
 interface OAuthErrorBody {
   error?: string;
@@ -100,5 +124,68 @@ export function submitConsent(action: "allow" | "deny"): Promise<AuthActionRes> 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action }),
+  });
+}
+
+export function fetchMe(): Promise<MeRes> {
+  return requestJson<MeRes>("/api/me");
+}
+
+export function accountLogin(username: string, password: string): Promise<void> {
+  return requestJson<void>("/api/me/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function accountLogout(): Promise<void> {
+  return requestJson<void>("/api/me/logout", { method: "POST" });
+}
+
+export function revokeConsent(clientId: string): Promise<void> {
+  return requestJson<void>(`/api/me/consents/${encodeURIComponent(clientId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function startPasskeyRegister(label?: string): Promise<CreationChallengeJson> {
+  return requestJson<CreationChallengeJson>("/api/me/passkeys/register/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label: label?.trim() || null }),
+  });
+}
+
+export function finishPasskeyRegister(credential: unknown): Promise<PasskeySummary> {
+  return requestJson<PasskeySummary>("/api/me/passkeys/register/finish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credential),
+  });
+}
+
+export function deletePasskey(id: string): Promise<void> {
+  return requestJson<void>(`/api/me/passkeys/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function startPasskeyAuth(username: string): Promise<RequestChallengeJson> {
+  return requestJson<RequestChallengeJson>("/api/passkey/auth/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
+  });
+}
+
+export function finishPasskeyAuth(
+  credential: unknown,
+  mode: "account" | "authorize"
+): Promise<AuthActionRes | { status: "ok" }> {
+  return requestJson<AuthActionRes | { status: "ok" }>("/api/passkey/auth/finish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential, mode }),
   });
 }

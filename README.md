@@ -17,6 +17,7 @@ Identity Provider (IdP) の学習および LAN 内での検証利用を目的と
 ### IdP (`server`)
 
 * `GET /` — IdP 管理ポータル（クライアント一覧・登録、ユーザー登録、OIDC Discovery 確認）
+* `GET /account` — ユーザーマイページ（パスキー登録・削除、連携済みアプリ確認・解除）
 * `GET /health` — ヘルスチェック
 * `GET /.well-known/openid-configuration` — OIDC Discovery メタデータ
 * `GET /.well-known/jwks.json` — RS256 公開鍵 (JWKS)
@@ -24,6 +25,8 @@ Identity Provider (IdP) の学習および LAN 内での検証利用を目的と
 * `GET /authorize` — 認可エンドポイント (`response_type=code`, PKCE, `scope`, `state`, `nonce` → React ログイン/同意画面)
 * `GET /api/auth/context` — 認可画面向けクライアント・スコープ情報取得
 * `POST /login`, `POST /consent` — ログイン・同意処理（`JSON` API、セッション管理）
+* `GET /api/me`, `POST /api/me/login`, `POST /api/me/logout`, `DELETE /api/me/consents/{client_id}` — マイページ・同意管理 API
+* `POST /api/me/passkeys/register/{start,finish}`, `DELETE /api/me/passkeys/{id}`, `POST /api/passkey/auth/{start,finish}` — WebAuthn パスキー登録・認証 API
 * `POST /token` — トークンエンドポイント (`application/x-www-form-urlencoded`, `client_secret_basic` / `client_secret_post`, `authorization_code` / `refresh_token`)
 * `POST /revoke` — トークン失効 (`RFC 7009`, クライアント認証付き)
 * `GET /userinfo` — UserInfo エンドポイント (`Bearer` JWT 検証、標準 `sub` クレーム返却)
@@ -59,6 +62,7 @@ docker compose up -d --build
 * `IDP_INTERNAL_URL`: コンテナ間通信向け IdP URL（例: `http://server:3000`）
 * `FRONTEND_DIR`: IdP フロントエンド (React ビルド済み `dist`) ディレクトリ
 * `STATIC_DIR`: `client_app` の静的ファイルディレクトリ
+* `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN`: パスキー (WebAuthn) の RP 設定（未設定時は `ISSUER` から自動導出。WebAuthn は `http://localhost` または `https://` で動作します）
 
 ### 2B. ローカル開発（ホットリロード）
 

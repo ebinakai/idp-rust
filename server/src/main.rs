@@ -5,7 +5,7 @@ mod models;
 
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use db_client::DbClient;
 use dotenvy::dotenv;
@@ -67,6 +67,23 @@ async fn main() {
             .to_string()
     });
 
+    let rp_origin_str = env::var("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|_| issuer.clone());
+    let rp_origin = webauthn_rs::prelude::Url::parse(&rp_origin_str)
+        .expect("WEBAUTHN_RP_ORIGIN / ISSUER が有効なURLではありません");
+    let rp_id = env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| {
+        rp_origin
+            .host_str()
+            .expect("WEBAUTHN_RP_ORIGIN にホスト名が含まれていません")
+            .to_string()
+    });
+    let webauthn = Arc::new(
+        webauthn_rs::WebauthnBuilder::new(&rp_id, &rp_origin)
+            .expect("WebauthnBuilder の初期化に失敗しました")
+            .rp_name("Rust IdP")
+            .build()
+            .expect("Webauthn の構築に失敗しました"),
+    );
+
     let state = models::AppState {
         db,
         auth_codes: Arc::new(Mutex::new(HashMap::new())),
@@ -76,6 +93,7 @@ async fn main() {
         issuer,
         refresh_token_ttl_days,
         frontend_dir: frontend_dir.clone(),
+        webauthn,
     };
 
     let protected_routes = Router::new()
@@ -104,6 +122,30 @@ async fn main() {
         .route(
             "/api/admin/clients",
             get(handlers::list_clients).post(handlers::create_client),
+        )
+        .route("/api/me", get(handlers::get_me))
+        .route("/api/me/login", post(handlers::account_login))
+        .route("/api/me/logout", post(handlers::account_logout))
+        .route(
+            "/api/me/consents/{client_id}",
+            delete(handlers::revoke_my_consent),
+        )
+        .route(
+            "/api/me/passkeys/register/start",
+            post(handlers::start_passkey_register),
+        )
+        .route(
+            "/api/me/passkeys/register/finish",
+            post(handlers::finish_passkey_register),
+        )
+        .route("/api/me/passkeys/{id}", delete(handlers::delete_my_passkey))
+        .route(
+            "/api/passkey/auth/start",
+            post(handlers::start_passkey_auth),
+        )
+        .route(
+            "/api/passkey/auth/finish",
+            post(handlers::finish_passkey_auth),
         )
         .merge(protected_routes)
         .fallback_service(

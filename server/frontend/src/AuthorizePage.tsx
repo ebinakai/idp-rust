@@ -1,10 +1,14 @@
 import { type FormEvent, useEffect, useState } from "react";
 import {
   fetchAuthContext,
+  finishPasskeyAuth,
+  startPasskeyAuth,
   submitConsent,
   submitLogin,
+  type AuthActionRes,
   type AuthContextRes,
 } from "./api";
+import { getPasskeyAssertion } from "./webauthn";
 
 type ConsentState = {
   client_name: string;
@@ -17,7 +21,7 @@ export function AuthorizePage() {
   const [context, setContext] = useState<AuthContextRes | null>(null);
   const [consentData, setConsentData] = useState<ConsentState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +36,18 @@ export function AuthorizePage() {
       .finally(() => setLoading(false));
   }, []);
 
+  function applyAuthResult(res: AuthActionRes) {
+    if (res.status === "redirect") {
+      window.location.assign(res.redirect_uri);
+      return;
+    }
+    setConsentData({
+      client_name: res.client_name,
+      username: res.username,
+      scopes: res.scopes,
+    });
+  }
+
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
@@ -41,30 +57,45 @@ export function AuthorizePage() {
       return;
     }
 
-    setBusy(true);
+    setBusy("password");
     setError(null);
     try {
       const res = await submitLogin(username.trim(), password);
-      if (res.status === "redirect") {
-        window.location.assign(res.redirect_uri);
-        return;
-      }
-      setConsentData({
-        client_name: res.client_name,
-        username: res.username,
-        scopes: res.scopes,
-      });
+      applyAuthResult(res);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "ログインに失敗しました";
       setError(msg);
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function handlePasskeyLogin() {
+    if (busy) return;
+
+    if (!username.trim()) {
+      setError("パスキーでログインするにはユーザー名を入力してください。");
+      return;
+    }
+
+    setBusy("passkey");
+    setError(null);
+    try {
+      const rcr = await startPasskeyAuth(username.trim());
+      const credential = await getPasskeyAssertion(rcr);
+      const res = (await finishPasskeyAuth(credential, "authorize")) as AuthActionRes;
+      applyAuthResult(res);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "パスキー認証に失敗しました";
+      setError(msg);
+    } finally {
+      setBusy(null);
     }
   }
 
   async function handleConsent(action: "allow" | "deny") {
     if (busy) return;
-    setBusy(true);
+    setBusy("consent");
     setError(null);
     try {
       const res = await submitConsent(action);
@@ -74,7 +105,7 @@ export function AuthorizePage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "認可処理に失敗しました";
       setError(msg);
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -130,7 +161,7 @@ export function AuthorizePage() {
                   type="button"
                   className="dads-btn dads-btn--secondary"
                   onClick={() => handleConsent("deny")}
-                  aria-busy={busy}
+                  aria-busy={busy === "consent"}
                 >
                   キャンセル
                 </button>
@@ -138,9 +169,9 @@ export function AuthorizePage() {
                   type="button"
                   className="dads-btn dads-btn--primary"
                   onClick={() => handleConsent("allow")}
-                  aria-busy={busy}
+                  aria-busy={busy === "consent"}
                 >
-                  {busy ? "処理中..." : "許可する"}
+                  {busy === "consent" ? "処理中..." : "許可する"}
                 </button>
               </div>
             </div>
@@ -160,7 +191,7 @@ export function AuthorizePage() {
                     id="auth-username"
                     type="text"
                     className="dads-input"
-                    autoComplete="username"
+                    autoComplete="username webauthn"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                   />
@@ -168,8 +199,11 @@ export function AuthorizePage() {
 
                 <div className="dads-field">
                   <label className="dads-label" htmlFor="auth-password">
-                    パスワード<span className="dads-req">※必須</span>
+                    パスワード
                   </label>
+                  <p className="dads-support-text">
+                    パスキーでログインする場合はパスワードの入力は不要です。
+                  </p>
                   <input
                     id="auth-password"
                     type="password"
@@ -180,13 +214,21 @@ export function AuthorizePage() {
                   />
                 </div>
 
-                <div className="dads-btn-group">
+                <div className="dads-btn-group dads-btn-group--between">
+                  <button
+                    type="button"
+                    className="dads-btn dads-btn--secondary"
+                    onClick={handlePasskeyLogin}
+                    aria-busy={busy === "passkey"}
+                  >
+                    {busy === "passkey" ? "認証中..." : "パスキーでログイン"}
+                  </button>
                   <button
                     type="submit"
                     className="dads-btn dads-btn--primary"
-                    aria-busy={busy}
+                    aria-busy={busy === "password"}
                   >
-                    {busy ? "認証中..." : "ログインして次へ"}
+                    {busy === "password" ? "認証中..." : "ログインして次へ"}
                   </button>
                 </div>
               </form>

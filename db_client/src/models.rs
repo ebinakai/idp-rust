@@ -31,3 +31,20 @@ pub struct RefreshToken {
     pub client_id: String,
     pub expires_at: NaiveDateTime,
 }
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PasskeyRecord {
+    pub id: String,
+    pub user_id: String,
+    pub credential_id: String,
+    pub label: String,
+    pub passkey_json: String,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct UserConsentRecord {
+    pub client_id: String,
+    pub client_name: String,
+    pub created_at: Option<DateTime<Utc>>,
+}

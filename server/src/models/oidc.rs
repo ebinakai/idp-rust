@@ -14,6 +14,7 @@ pub struct AppState {
     pub issuer: String,
     pub refresh_token_ttl_days: i64,
     pub frontend_dir: String,
+    pub webauthn: Arc<webauthn_rs::Webauthn>,
 }
 
 #[derive(Serialize)]

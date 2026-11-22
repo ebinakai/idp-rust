@@ -302,11 +302,11 @@ pub async fn get_auth_context(
     }))
 }
 
-pub async fn login_user(
-    State(state): State<AppState>,
-    session: tower_sessions::Session,
-    Json(payload): Json<LoginReq>,
-) -> Result<Json<AuthActionRes>, AppError> {
+pub async fn complete_authorize_login(
+    state: &AppState,
+    session: &tower_sessions::Session,
+    user: &User,
+) -> Result<AuthActionRes, AppError> {
     let pending = session
         .get::<PendingAuth>("pending_auth")
         .await
@@ -326,6 +326,43 @@ pub async fn login_user(
         return Err(AppError::invalid_request("リダイレクトURIが無効です"));
     }
 
+    session.cycle_id().await.map_err(AppError::internal)?;
+    session
+        .insert("account_user_id", &user.id)
+        .await
+        .map_err(AppError::internal)?;
+
+    if state
+        .db
+        .has_user_consent(&user.id, &pending.client_id)
+        .await
+        .map_err(AppError::internal)?
+    {
+        session
+            .remove::<PendingAuth>("pending_auth")
+            .await
+            .map_err(AppError::internal)?;
+        let redirect_uri = issue_auth_code_url(state, &user.id, pending)?;
+        return Ok(AuthActionRes::Redirect { redirect_uri });
+    }
+
+    session
+        .insert("authenticated_user_id", &user.id)
+        .await
+        .map_err(AppError::internal)?;
+
+    Ok(AuthActionRes::Consent {
+        client_name: client.name,
+        username: user.username.clone(),
+        scopes: format_scopes(pending.scope.as_deref()),
+    })
+}
+
+pub async fn login_user(
+    State(state): State<AppState>,
+    session: tower_sessions::Session,
+    Json(payload): Json<LoginReq>,
+) -> Result<Json<AuthActionRes>, AppError> {
     let user = state
         .db
         .get_user_by_name(&payload.username)
@@ -347,32 +384,8 @@ pub async fn login_user(
         ));
     }
 
-    session.cycle_id().await.map_err(AppError::internal)?;
-
-    if state
-        .db
-        .has_user_consent(&user.id, &pending.client_id)
-        .await
-        .map_err(AppError::internal)?
-    {
-        session
-            .remove::<PendingAuth>("pending_auth")
-            .await
-            .map_err(AppError::internal)?;
-        let redirect_uri = issue_auth_code_url(&state, &user.id, pending)?;
-        return Ok(Json(AuthActionRes::Redirect { redirect_uri }));
-    }
-
-    session
-        .insert("authenticated_user_id", &user.id)
-        .await
-        .map_err(AppError::internal)?;
-
-    Ok(Json(AuthActionRes::Consent {
-        client_name: client.name,
-        username: user.username,
-        scopes: format_scopes(pending.scope.as_deref()),
-    }))
+    let action = complete_authorize_login(&state, &session, &user).await?;
+    Ok(Json(action))
 }
 
 pub async fn consent(

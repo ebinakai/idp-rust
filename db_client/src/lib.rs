@@ -1,6 +1,6 @@
 mod models;
 
-pub use models::{DbClient, OAuthClient, RefreshToken, User};
+pub use models::{DbClient, OAuthClient, PasskeyRecord, RefreshToken, User, UserConsentRecord};
 use sqlx::mysql::MySqlPoolOptions;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -209,5 +209,99 @@ impl DbClient {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn save_passkey(&self, record: &PasskeyRecord) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO webauthn_credentials (id, user_id, credential_id, label, passkey_json) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&record.id)
+        .bind(&record.user_id)
+        .bind(&record.credential_id)
+        .bind(&record.label)
+        .bind(&record.passkey_json)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn list_passkeys_by_user(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<PasskeyRecord>, sqlx::Error> {
+        sqlx::query_as::<_, PasskeyRecord>(
+            "SELECT id, user_id, credential_id, label, passkey_json, created_at
+                FROM webauthn_credentials
+                WHERE user_id = ?
+                ORDER BY created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn update_passkey_json(
+        &self,
+        credential_id: &str,
+        passkey_json: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE webauthn_credentials SET passkey_json = ? WHERE credential_id = ?")
+            .bind(passkey_json)
+            .bind(credential_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_passkey(&self, id: &str, user_id: &str) -> Result<bool, sqlx::Error> {
+        let res = sqlx::query("DELETE FROM webauthn_credentials WHERE id = ? AND user_id = ?")
+            .bind(id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(res.rows_affected() > 0)
+    }
+
+    pub async fn list_user_consents(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<UserConsentRecord>, sqlx::Error> {
+        sqlx::query_as::<_, UserConsentRecord>(
+            "SELECT uc.client_id, oc.name AS client_name, uc.created_at
+                FROM user_consents uc
+                INNER JOIN oauth_clients oc ON oc.id = uc.client_id
+                WHERE uc.user_id = ?
+                ORDER BY uc.created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn revoke_user_consent(
+        &self,
+        user_id: &str,
+        client_id: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
+        let consent_res =
+            sqlx::query("DELETE FROM user_consents WHERE user_id = ? AND client_id = ?")
+                .bind(user_id)
+                .bind(client_id)
+                .execute(&mut *tx)
+                .await?;
+
+        sqlx::query("DELETE FROM refresh_tokens WHERE user_id = ? AND client_id = ?")
+            .bind(user_id)
+            .bind(client_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(consent_res.rows_affected() > 0)
     }
 }

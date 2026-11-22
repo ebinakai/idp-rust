@@ -200,4 +200,67 @@ mod tests {
             "削除されたトークンが取得されました"
         );
     }
+
+    #[sqlx::test(migrations = "../migrations")]
+    async fn test_passkey_crud_and_consent_revocation(pool: MySqlPool) {
+        let client = DbClient { pool };
+
+        let user_id = Uuid::new_v4().to_string();
+        let user = User {
+            id: user_id.clone(),
+            username: format!("passkey_user_{}", user_id),
+            password_hash: "hash".to_string(),
+            created_at: None,
+            updated_at: None,
+        };
+        client.create_user(&user).await.unwrap();
+
+        let passkey_id = Uuid::new_v4().to_string();
+        let cred_id = format!("cred_{}", Uuid::new_v4());
+        let record = PasskeyRecord {
+            id: passkey_id.clone(),
+            user_id: user_id.clone(),
+            credential_id: cred_id.clone(),
+            label: "MacBook Touch ID".to_string(),
+            passkey_json: "{\"v\":1}".to_string(),
+            created_at: None,
+        };
+        client.save_passkey(&record).await.unwrap();
+
+        let list = client.list_passkeys_by_user(&user_id).await.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].label, "MacBook Touch ID");
+
+        client
+            .update_passkey_json(&cred_id, "{\"v\":2}")
+            .await
+            .unwrap();
+        let updated = client.list_passkeys_by_user(&user_id).await.unwrap();
+        assert_eq!(updated[0].passkey_json, "{\"v\":2}");
+
+        assert!(client.delete_passkey(&passkey_id, &user_id).await.unwrap());
+        assert!(!client.delete_passkey(&passkey_id, &user_id).await.unwrap());
+
+        client
+            .give_consent(&user_id, "test_client_app")
+            .await
+            .unwrap();
+        let consents = client.list_user_consents(&user_id).await.unwrap();
+        assert_eq!(consents.len(), 1);
+        assert_eq!(consents[0].client_id, "test_client_app");
+
+        assert!(
+            client
+                .revoke_user_consent(&user_id, "test_client_app")
+                .await
+                .unwrap()
+        );
+        assert!(
+            client
+                .list_user_consents(&user_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
 }
