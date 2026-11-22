@@ -25,6 +25,10 @@ pub struct IdTokenClaims {
     pub aud: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub exp: usize,
     pub iat: usize,
 }
@@ -64,6 +68,7 @@ pub fn create_id_token(
     client_id: &str,
     issuer: &str,
     nonce: Option<&str>,
+    username: Option<&str>,
     private_key_pem: &[u8],
     kid: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
@@ -75,6 +80,8 @@ pub fn create_id_token(
         sub: user_id.to_string(),
         aud: client_id.to_string(),
         nonce: nonce.map(str::to_string),
+        preferred_username: username.map(str::to_string),
+        name: username.map(str::to_string),
         exp,
         iat,
     };

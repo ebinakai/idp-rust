@@ -535,12 +535,19 @@ pub async fn exchange_token(
             .is_some_and(|s| s.split_whitespace().any(|part| part == "openid"));
 
         let id_token = if has_openid {
+            let user = state
+                .db
+                .get_user(&user_id)
+                .await
+                .map_err(AppError::internal)?
+                .ok_or_else(|| AppError::invalid_grant("ユーザーが見つかりません"))?;
             Some(
                 jwt_core::create_id_token(
                     &user_id,
                     &client.id,
                     &state.issuer,
                     auth_code.nonce.as_deref(),
+                    Some(user.username.as_str()),
                     state.private_key.as_bytes(),
                     &state.kid,
                 )
