@@ -232,34 +232,31 @@ function AdminPortal() {
     <div className="dads-page">
       <header className="dads-header">
         <div className="dads-header__inner">
-          <h1 className="dads-header__title">Rust IdP 管理ポータル</h1>
-          <div className="dads-header__actions">
+          <div className="dads-header__brand">
+            <h1 className="dads-header__title">Rust IdP 管理ポータル</h1>
             {adminUser ? (
-              <>
-                <span className="dads-chip dads-chip--success">管理者: {adminUser.username}</span>
-                <a href="/account" className="dads-btn dads-btn--secondary dads-btn--sm">
-                  マイページ
-                </a>
-                <button
-                  type="button"
-                  className="dads-btn dads-btn--secondary dads-btn--sm"
-                  onClick={handleLogout}
-                  aria-busy={busyAction === "logout"}
-                >
-                  ログアウト
-                </button>
-              </>
+              <span className="dads-chip dads-chip--success">管理者: {adminUser.username}</span>
             ) : (
-              <>
-                <span
-                  className={`dads-chip ${discovery ? "dads-chip--success" : "dads-chip--error"}`}
-                >
-                  {loading ? "接続確認中" : discovery ? "IdP 稼働中" : "接続エラー"}
-                </span>
-                <a href="/account" className="dads-btn dads-btn--secondary dads-btn--sm">
-                  マイページ
-                </a>
-              </>
+              <span
+                className={`dads-chip ${discovery ? "dads-chip--success" : "dads-chip--error"}`}
+              >
+                {loading ? "接続確認中" : discovery ? "IdP 稼働中" : "接続エラー"}
+              </span>
+            )}
+          </div>
+          <div className="dads-header__actions">
+            <a href="/account" className="dads-btn dads-btn--secondary dads-btn--sm">
+              マイページ
+            </a>
+            {adminUser && (
+              <button
+                type="button"
+                className="dads-btn dads-btn--secondary dads-btn--sm"
+                onClick={handleLogout}
+                aria-busy={busyAction === "logout"}
+              >
+                ログアウト
+              </button>
             )}
           </div>
         </div>
