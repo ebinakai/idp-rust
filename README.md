@@ -64,3 +64,15 @@ cargo run -p server
 # クライアントアプリ (Port 4000)
 cargo run -p client_app
 ```
+
+### 4. テストユーザー登録と動作確認
+
+1. IdP サーバー起動後、テスト用ユーザーを登録します。
+
+```bash
+curl -i -X POST http://127.0.0.1:3000/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "testuser", "password": "password123"}'
+```
+
+2. ブラウザで `http://127.0.0.1:4000` を開き、`Go /authorize endpoint` からログイン・同意フローを実行して、トークン取得・UserInfo 取得・ローカル検証・リフレッシュ・ログアウトを確認します。
