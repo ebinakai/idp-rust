@@ -19,6 +19,7 @@ services:
   pma:
     image: phpmyadmin/phpmyadmin
     container_name: idp-phpmyadmin
+    profiles: ["dev"]
     environment:
       PMA_HOST: db
       PMA_PORT: 3306
@@ -53,22 +54,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-
-  client:
-    build:
-      context: .
-      target: client_app
-    container_name: idp-client
-    environment:
-      IDP_BASE_URL: ${IDP_BASE_URL:-http://localhost:3000}
-      IDP_INTERNAL_URL: http://server:3000
-      CLIENT_URL: ${CLIENT_URL:-http://localhost:4000}
-      BIND_ADDR: 0.0.0.0:4000
-      STATIC_DIR: /app/static
-    ports:
-      - "4000:4000"
-    depends_on:
-      - server
 
 volumes:
   mysql_data:
