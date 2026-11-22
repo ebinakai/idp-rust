@@ -45,6 +45,7 @@ pub struct AppState {
     pub client_id: String,
     pub client_secret: String,
     pub idp_base_url: String,
+    pub idp_internal_url: String,
     pub client_url: String,
 }
 

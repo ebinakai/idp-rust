@@ -19,6 +19,10 @@ impl DbClient {
         Ok(Self { pool })
     }
 
+    pub async fn migrate(&self) -> Result<(), sqlx::migrate::MigrateError> {
+        sqlx::migrate!("../migrations").run(&self.pool).await
+    }
+
     pub async fn create_oauth_client(&self, client: &OAuthClient) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 

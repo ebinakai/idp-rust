@@ -14,7 +14,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{env, fs};
 use tokio::net::TcpListener;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_sessions::{MemoryStore, SessionManagerLayer};
 
 fn read_key_file(env_name: &str, candidates: &[&str]) -> String {
@@ -52,9 +52,20 @@ async fn main() {
     let db = DbClient::new(&database_url)
         .await
         .expect("データベースへの接続に失敗しました");
+    db.migrate()
+        .await
+        .expect("データベースのマイグレーションに失敗しました");
 
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store).with_secure(false);
+
+    let frontend_dir = env::var("FRONTEND_DIR").unwrap_or_else(|_| {
+        ["frontend/dist", "server/frontend/dist"]
+            .into_iter()
+            .find(|p| Path::new(p).exists())
+            .unwrap_or("frontend/dist")
+            .to_string()
+    });
 
     let state = models::AppState {
         db,
@@ -64,6 +75,7 @@ async fn main() {
         kid: "key-2026-04".to_string(),
         issuer,
         refresh_token_ttl_days,
+        frontend_dir: frontend_dir.clone(),
     };
 
     let protected_routes = Router::new()
@@ -73,14 +85,10 @@ async fn main() {
             middleware::auth_guard,
         ));
 
-    let static_dir = if Path::new("static").exists() {
-        "static"
-    } else {
-        "server/static"
-    };
+    let index_file = Path::new(&frontend_dir).join("index.html");
 
     let app = Router::new()
-        .route("/", get(handlers::health_check))
+        .route("/health", get(handlers::health_check))
         .route(
             "/.well-known/openid-configuration",
             get(handlers::get_openid_config),
@@ -88,6 +96,7 @@ async fn main() {
         .route("/.well-known/jwks.json", get(handlers::get_jwks))
         .route("/register", post(handlers::register_user))
         .route("/authorize", get(handlers::authorize))
+        .route("/api/auth/context", get(handlers::get_auth_context))
         .route("/login", post(handlers::login_user))
         .route("/consent", post(handlers::consent))
         .route("/token", post(handlers::exchange_token))
@@ -96,15 +105,18 @@ async fn main() {
             "/api/admin/clients",
             get(handlers::list_clients).post(handlers::create_client),
         )
-        .nest_service("/static", ServeDir::new(static_dir))
         .merge(protected_routes)
+        .fallback_service(
+            ServeDir::new(&frontend_dir).not_found_service(ServeFile::new(index_file)),
+        )
         .layer(session_layer)
         .with_state(state);
 
-    let listener = TcpListener::bind("127.0.0.1:3000")
+    let bind_addr = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_string());
+    let listener = TcpListener::bind(&bind_addr)
         .await
-        .expect("3000番ポートへのバインドが失敗しました");
-    println!("Server is running on http://127.0.0.1:3000");
+        .unwrap_or_else(|e| panic!("{} へのバインドが失敗しました: {}", bind_addr, e));
+    println!("Server is running on http://{}", bind_addr);
 
     axum::serve(listener, app)
         .await

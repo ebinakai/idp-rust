@@ -25,7 +25,7 @@ async fn fetch_decoding_key(
     };
 
     if target_jwk.is_none() {
-        let jwks_url = format!("{}/.well-known/jwks.json", state.idp_base_url);
+        let jwks_url = format!("{}/.well-known/jwks.json", state.idp_internal_url);
         let jwks_res = state
             .reqwest_client
             .get(jwks_url)
@@ -191,7 +191,7 @@ pub async fn callback(
         code_verifier,
     };
 
-    let token_url = format!("{}/token", state.idp_base_url);
+    let token_url = format!("{}/token", state.idp_internal_url);
     let token_res = state
         .reqwest_client
         .post(token_url)
@@ -296,7 +296,7 @@ pub async fn get_userinfo(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let access_token = extract_access_token(&headers, &session).await?;
 
-    let userinfo_url = format!("{}/userinfo", state.idp_base_url);
+    let userinfo_url = format!("{}/userinfo", state.idp_internal_url);
     let res = state
         .reqwest_client
         .get(userinfo_url)
@@ -376,7 +376,7 @@ pub async fn refresh(
         refresh_token,
     };
 
-    let token_url = format!("{}/token", state.idp_base_url);
+    let token_url = format!("{}/token", state.idp_internal_url);
     let res = state
         .reqwest_client
         .post(token_url)
@@ -426,7 +426,7 @@ pub async fn logout(
         .map_err(internal_err)?
     {
         if let Some(refresh_token) = tokens.refresh_token {
-            let revoke_url = format!("{}/revoke", state.idp_base_url);
+            let revoke_url = format!("{}/revoke", state.idp_internal_url);
             let res = state
                 .reqwest_client
                 .post(revoke_url)

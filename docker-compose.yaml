@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: mysql:8.0
@@ -8,24 +6,67 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
     ports:
-      - "${MYSQL_PORT}:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     command: --default-authentication-plugin=mysql_native_password
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   pma:
     image: phpmyadmin/phpmyadmin
     container_name: idp-phpmyadmin
     environment:
       PMA_HOST: db
-      PMA_PORT: ${MYSQL_PORT}
+      PMA_PORT: 3306
       PMA_USER: root
       PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       PMA_DATABASE: ${MYSQL_DATABASE}
     ports:
-      - "${PMA_PORT}:80"
+      - "${PMA_PORT:-8080}:80"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+
+  server:
+    build:
+      context: .
+      target: server
+    container_name: idp-server
+    environment:
+      DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD}@db:3306/${MYSQL_DATABASE}?ssl_mode=DISABLED
+      ISSUER: ${ISSUER:-http://localhost:3000}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      BIND_ADDR: 0.0.0.0:3000
+      FRONTEND_DIR: /app/frontend
+      PRIVATE_KEY_PATH: /app/keys/private_key.pem
+      PUBLIC_KEY_PATH: /app/keys/public_key.pem
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  client:
+    build:
+      context: .
+      target: client_app
+    container_name: idp-client
+    environment:
+      IDP_BASE_URL: ${IDP_BASE_URL:-http://localhost:3000}
+      IDP_INTERNAL_URL: http://server:3000
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:4000}
+      BIND_ADDR: 0.0.0.0:4000
+      STATIC_DIR: /app/static
+    ports:
+      - "4000:4000"
+    depends_on:
+      - server
 
 volumes:
   mysql_data:

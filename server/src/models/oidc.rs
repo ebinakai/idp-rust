@@ -13,6 +13,27 @@ pub struct AppState {
     pub kid: String,
     pub issuer: String,
     pub refresh_token_ttl_days: i64,
+    pub frontend_dir: String,
+}
+
+#[derive(Serialize)]
+pub struct AuthContextRes {
+    pub client_id: String,
+    pub client_name: String,
+    pub scopes: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum AuthActionRes {
+    Redirect {
+        redirect_uri: String,
+    },
+    Consent {
+        client_name: String,
+        username: String,
+        scopes: Vec<String>,
+    },
 }
 
 #[derive(Deserialize)]

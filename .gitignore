@@ -23,3 +23,8 @@ target
 .env
 *.pem
 .DS_Store
+server/frontend/node_modules/
+server/frontend/dist/
+deisgn-guideline/
+node_modules/
+dist/

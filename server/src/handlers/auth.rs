@@ -1,29 +1,15 @@
 use crate::{error::AppError, models::*};
-use askama::Template;
 use axum::{
     Form, Json,
     extract::{Query, State},
     http::{HeaderMap, StatusCode, header},
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use db_client::{DbClient, OAuthClient, User};
 use oauth_flow::{AuthCode, TokenRequest as OAuthTokenReq};
+use std::path::Path;
 use uuid::Uuid;
-
-#[derive(Template)]
-#[template(path = "auth/login.html")]
-pub struct LoginTemplate {
-    pub client_name: String,
-}
-
-#[derive(Template)]
-#[template(path = "auth/consent.html")]
-pub struct ConsentTemplate {
-    pub client_name: String,
-    pub username: String,
-    pub scopes: Vec<String>,
-}
 
 fn build_redirect_url(base: &str, params: &[(&str, &str)]) -> String {
     if params.is_empty() {
@@ -160,11 +146,11 @@ pub async fn authenticate_client(
     Ok(client)
 }
 
-fn issue_auth_code_redirect(
+fn issue_auth_code_url(
     state: &AppState,
     user_id: &str,
     pending: PendingAuth,
-) -> Result<Redirect, AppError> {
+) -> Result<String, AppError> {
     let mut auth_code = AuthCode::new(user_id, &pending.client_id, &pending.redirect_uri);
     auth_code.scope = pending.scope;
     auth_code.nonce = pending.nonce;
@@ -185,10 +171,7 @@ fn issue_auth_code_redirect(
         params.push(("state", st));
     }
 
-    Ok(Redirect::to(&build_redirect_url(
-        &pending.redirect_uri,
-        &params,
-    )))
+    Ok(build_redirect_url(&pending.redirect_uri, &params))
 }
 
 pub async fn register_user(
@@ -283,19 +266,47 @@ pub async fn authorize(
         .await
         .map_err(AppError::internal)?;
 
-    let template = LoginTemplate {
-        client_name: client.name,
-    };
-    let html = template.render().map_err(AppError::internal)?;
+    let index_path = Path::new(&state.frontend_dir).join("index.html");
+    let html = tokio::fs::read_to_string(&index_path)
+        .await
+        .map_err(AppError::internal)?;
 
     Ok(Html(html))
+}
+
+pub async fn get_auth_context(
+    State(state): State<AppState>,
+    session: tower_sessions::Session,
+) -> Result<Json<AuthContextRes>, AppError> {
+    let pending = session
+        .get::<PendingAuth>("pending_auth")
+        .await
+        .map_err(AppError::internal)?
+        .ok_or_else(|| {
+            AppError::invalid_request(
+                "認可セッションが見つかりません。クライアントアプリからやり直してください",
+            )
+        })?;
+
+    let client = state
+        .db
+        .get_oauth_client(&pending.client_id)
+        .await
+        .map_err(AppError::internal)?
+        .ok_or_else(|| AppError::invalid_client("クライアントが見つかりません"))?;
+
+    Ok(Json(AuthContextRes {
+        client_id: client.id,
+        client_name: client.name,
+        scopes: format_scopes(pending.scope.as_deref()),
+    }))
 }
 
 pub async fn login_user(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    Form(payload): Form<LoginReq>,
-) -> Result<impl IntoResponse, AppError> {
+    Json(payload): Json<LoginReq>,
+) -> Result<Json<AuthActionRes>, AppError> {
     let pending = session
         .get::<PendingAuth>("pending_auth")
         .await
@@ -348,7 +359,8 @@ pub async fn login_user(
             .remove::<PendingAuth>("pending_auth")
             .await
             .map_err(AppError::internal)?;
-        return Ok(issue_auth_code_redirect(&state, &user.id, pending)?.into_response());
+        let redirect_uri = issue_auth_code_url(&state, &user.id, pending)?;
+        return Ok(Json(AuthActionRes::Redirect { redirect_uri }));
     }
 
     session
@@ -356,21 +368,18 @@ pub async fn login_user(
         .await
         .map_err(AppError::internal)?;
 
-    let template = ConsentTemplate {
+    Ok(Json(AuthActionRes::Consent {
         client_name: client.name,
         username: user.username,
         scopes: format_scopes(pending.scope.as_deref()),
-    };
-    let html = template.render().map_err(AppError::internal)?;
-
-    Ok(Html(html).into_response())
+    }))
 }
 
 pub async fn consent(
     State(state): State<AppState>,
     session: tower_sessions::Session,
-    Form(payload): Form<ConsentReq>,
-) -> Result<impl IntoResponse, AppError> {
+    Json(payload): Json<ConsentReq>,
+) -> Result<Json<AuthActionRes>, AppError> {
     let pending = session
         .remove::<PendingAuth>("pending_auth")
         .await
@@ -399,10 +408,9 @@ pub async fn consent(
         if let Some(ref st) = pending.state {
             params.push(("state", st));
         }
-        return Ok(Redirect::to(&build_redirect_url(
-            &pending.redirect_uri,
-            &params,
-        )));
+        return Ok(Json(AuthActionRes::Redirect {
+            redirect_uri: build_redirect_url(&pending.redirect_uri, &params),
+        }));
     }
 
     if payload.action == "allow" {
@@ -420,7 +428,8 @@ pub async fn consent(
             .await
             .map_err(AppError::internal)?;
 
-        return issue_auth_code_redirect(&state, &user_id, pending);
+        let redirect_uri = issue_auth_code_url(&state, &user_id, pending)?;
+        return Ok(Json(AuthActionRes::Redirect { redirect_uri }));
     }
 
     Err(AppError::invalid_request("actionが無効です"))
